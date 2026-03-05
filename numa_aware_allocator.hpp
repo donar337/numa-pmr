@@ -2,21 +2,26 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <memory_resource>
 #include <vector>
 #include <array>
-#include <memory>
 #include <cassert>
 #include <new>
 #include <sys/mman.h>
+#include <unordered_map>
 
 // ============================================================
 // CONFIG
 // ============================================================
 
-struct ArenaPolicy {
-    static constexpr size_t small_large_threshold = 4096;      // 4 KB
-    static constexpr size_t slab_size             = 64 * 1024; // 64 KB
+#define SMALL_LARGE_THRESHOLD 4096        // 4 KB
+#define SLAB_SIZE             (64 * 1024) // 64 KB
+
+struct SizeClassConfig {
+    static constexpr size_t kNumBounds = 3;
+    static constexpr size_t thresholds[kNumBounds] = {512, 1024, SMALL_LARGE_THRESHOLD};
+    static constexpr size_t alignments[kNumBounds] = {16, 64, 256};
 };
 
 // ============================================================
@@ -85,17 +90,24 @@ public:
 
 
 // ============================================================
-// SIZE CLASS TABLE (MVP: simple step = 16)
+// SIZE CLASS TABLE
 // ============================================================
 
 class SizeClassTable {
 public:
-    static constexpr size_t kMaxSmallSize = ArenaPolicy::small_large_threshold;
-    static constexpr size_t kAlignment    = 16;
+    static constexpr size_t kMaxSmallSize = SMALL_LARGE_THRESHOLD;
 
     static size_t class_size(size_t size) {
-        size_t aligned = (size + kAlignment - 1) / kAlignment * kAlignment;
-        return aligned;
+        for (size_t i = 0; i < SizeClassConfig::kNumBounds; ++i) {
+            if (size <= SizeClassConfig::thresholds[i]) {
+                return align_up(size, SizeClassConfig::alignments[i]);
+            }
+        }
+        return align_up(size, SizeClassConfig::alignments[SizeClassConfig::kNumBounds - 1]);
+    }
+private:
+    static size_t align_up(size_t size, size_t alignment) {
+        return (size + alignment - 1) / alignment * alignment;
     }
 };
 
@@ -115,8 +127,8 @@ public:
     };
 
     static Slab* create(size_t block_size, int node_id) {
-        void* mem = VirtualMemory::reserve(ArenaPolicy::slab_size);
-        VirtualMemory::bind_to_node(mem, ArenaPolicy::slab_size, node_id);
+        void* mem = VirtualMemory::reserve(SLAB_SIZE);
+        VirtualMemory::bind_to_node(mem, SLAB_SIZE, node_id);
 
         auto* slab = reinterpret_cast<Slab*>(mem);
         slab->init(block_size, node_id);
@@ -152,7 +164,7 @@ private:
         header->block_size = block_size;
 
         size_t usable =
-            ArenaPolicy::slab_size - sizeof(SlabHeader);
+            SLAB_SIZE - sizeof(SlabHeader);
 
         size_t total_block_size =
             sizeof(BlockHeader) + block_size;
@@ -205,7 +217,7 @@ public:
 private:
     Slab* align_to_slab(void* ptr) {
         uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
-        uintptr_t base = addr & ~(ArenaPolicy::slab_size - 1);
+        uintptr_t base = addr & ~(SLAB_SIZE - 1);
         return reinterpret_cast<Slab*>(base);
     }
 
@@ -304,7 +316,7 @@ public:
     {}
 
     void* allocate(size_t size, size_t alignment) {
-        if (size <= ArenaPolicy::small_large_threshold) {
+        if (size <= SMALL_LARGE_THRESHOLD) {
             void* block = small_.allocate(size);
 
             auto* header = new(block) BlockHeader{
@@ -378,7 +390,7 @@ protected:
             .deallocate(p, bytes);
     }
 
-    bool do_is_equal(const memory_resource& other) const noexcept override {
+    bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {
         return this == &other;
     }
 };
