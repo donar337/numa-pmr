@@ -45,8 +45,8 @@ struct alignas(ALIGNMENT) BlockHeader {
     uint32_t size_class;   // 0 = large
     uint64_t size;         // only for large allocations
 
-    void* raw_ptr;
-    size_t total_size;
+    void* raw_ptr;       // large: mmap base, small: owning slab
+    size_t total_size;   // large: mmap size, small: slab size
 
     static BlockHeader* from_user_ptr(void* p) noexcept {
         return reinterpret_cast<BlockHeader*>(

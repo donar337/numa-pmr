@@ -1,20 +1,32 @@
 ```mermaid
 flowchart TD
-    A[NumaMemoryResource] --> B[NumaManager]
-    B --> C[NumaArena]
+    T[Thread] --> TLC[Thread Local Cache]
 
-    C --> D{size <= 4096?}
+    TLC --> NM[NumaManager]
 
-    D -- Yes --> E[SmallObjectAllocator]
-    D -- No --> F[LargeObjectAllocator]
+    NM --> NA[NumaArena per NUMA node]
 
-    E --> G[SizeClass]
-    G --> H[Slab]
+    NA --> DEC{size <= threshold?}
 
-    H --> I[VirtualMemory mmap]
+    DEC -- small --> SOA[SmallObjectAllocator]
+    DEC -- large --> LOA[LargeObjectAllocator]
 
-    F --> I
+    SOA --> SC[Size Classes]
+    SC --> SL[Slabs]
 
-    I --> J[BlockHeader]
-    J --> K[User Memory]
+    SL --> VM[Virtual Memory]
+
+    LOA --> VM
+
+    VM --> BH[Block Header]
+    BH --> UM[User Memory]
+
+    subgraph NUMA Node
+        NA
+        SOA
+        SC
+        SL
+        LOA
+        DEC
+    end
 ```
