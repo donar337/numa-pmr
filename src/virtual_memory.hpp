@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <algorithm>
+#include <new>
 
 #include <unistd.h>
 #include <sys/mman.h>
@@ -22,6 +23,10 @@ public:
     };
 
     static void* reserve(size_t size) {
+        if (size == 0) {
+            size = page_size();
+        }
+
         size = align_up(size, page_size());
 
         void* ptr = mmap(nullptr,
@@ -40,21 +45,30 @@ public:
 
     static void release(void* ptr, size_t size) {
         if (!ptr) return;
+        if (size == 0) return;
 
         size = align_up(size, page_size());
         munmap(ptr, size);
     }
 
-    static void bind_to_node(void* ptr,
+    static bool bind_to_node(void* ptr,
                              size_t size,
                              int node,
                              NumaPolicy policy = NumaPolicy::Bind)
     {
         if (policy == NumaPolicy::FirstTouch) {
-            return;
+            return true;
+        }
+
+        if (!ptr) {
+            return false;
         }
 
         size = align_up(size, page_size());
+
+        if (node < 0 || static_cast<unsigned long>(node) >= max_nodes()) {
+            return false;
+        }
 
         unsigned long nodemask = 1UL << node;
 
@@ -71,9 +85,7 @@ public:
                          max_nodes(),
                          0);
 
-        if (ret != 0) {
-            throw std::runtime_error("mbind failed");
-        }
+        return ret == 0;
     }
 
     static void advise_hugepage(void* ptr, size_t size) {
@@ -103,7 +115,11 @@ public:
     }
 
     static constexpr size_t align_up(size_t x, size_t align) {
-        return (x + align - 1) & ~(align - 1);
+        if (align == 0) {
+            return x;
+        }
+
+        return ((x + align - 1) / align) * align;
     }
 
 private:

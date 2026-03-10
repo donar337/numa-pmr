@@ -1,7 +1,11 @@
 #pragma once
 
 #include "block.hpp"
+#include <algorithm>
 #include <array>
+#include <mutex>
+#include <new>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -42,6 +46,9 @@ public:
         void* block = header->free_list;
 
         auto* bh = reinterpret_cast<BlockHeader*>(block);
+        bh->raw_ptr = this;
+        bh->total_size = SLAB_SIZE;
+
         void* user_ptr = bh->to_user_ptr();
         
         header->free_list = *reinterpret_cast<void**>(user_ptr);
@@ -109,15 +116,79 @@ private:
 
 
 // ============================================================
+// NODE LOCAL METADATA ALLOCATOR
+// ============================================================
+
+template <typename T>
+class NodeLocalAllocator {
+public:
+    using value_type = T;
+
+    explicit NodeLocalAllocator(int node_id = 0) noexcept
+        : node_id_(node_id) {}
+
+    template <typename U>
+    NodeLocalAllocator(const NodeLocalAllocator<U>& other) noexcept
+        : node_id_(other.node_id()) {}
+
+    T* allocate(std::size_t n) {
+        if (n > static_cast<std::size_t>(-1) / sizeof(T)) { // NOLINT(bugprone-sizeof-expression)
+            throw std::bad_array_new_length();
+        }
+
+        size_t bytes = n * sizeof(T); // NOLINT(bugprone-sizeof-expression)
+        void* mem = VirtualMemory::reserve(bytes);
+
+        VirtualMemory::bind_to_node(
+            mem,
+            bytes,
+            node_id_,
+            VirtualMemory::NumaPolicy::Bind
+        );
+
+        return static_cast<T*>(mem);
+    }
+
+    void deallocate(T* p, std::size_t n) noexcept {
+        VirtualMemory::release(p, n * sizeof(T)); // NOLINT(bugprone-sizeof-expression)
+    }
+
+    int node_id() const noexcept {
+        return node_id_;
+    }
+
+private:
+    int node_id_;
+};
+
+template <typename T, typename U>
+bool operator==(const NodeLocalAllocator<T>& lhs,
+                const NodeLocalAllocator<U>& rhs) noexcept {
+    return lhs.node_id() == rhs.node_id();
+}
+
+template <typename T, typename U>
+bool operator!=(const NodeLocalAllocator<T>& lhs,
+                const NodeLocalAllocator<U>& rhs) noexcept {
+    return !(lhs == rhs);
+}
+
+
+// ============================================================
 // SIZE CLASS
 // ============================================================
 
 class SizeClass {
 public:
     SizeClass(size_t block_size, int node_id)
-        : block_size_(block_size), node_id_(node_id), current_(nullptr) {}
+        : block_size_(block_size),
+          node_id_(node_id),
+          current_(nullptr),
+          slabs_(NodeLocalAllocator<Slab*>(node_id)) {}
 
     void* allocate() {
+        std::lock_guard<std::mutex> lock(mutex_);
+
         if (current_ && current_->has_free())
             return current_->allocate_block();
 
@@ -134,7 +205,15 @@ public:
     }
 
     void deallocate(void* ptr) {
-        Slab* slab = align_to_slab(ptr);
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto* block_header = reinterpret_cast<BlockHeader*>(ptr);
+        auto* slab = static_cast<Slab*>(block_header->raw_ptr);
+
+        if (!slab) {
+            throw std::invalid_argument("small allocation has no owning slab");
+        }
+
         slab->free_block(ptr);
 
         auto* header = reinterpret_cast<Slab::SlabHeader*>(slab);
@@ -154,16 +233,11 @@ public:
     }
 
 private:
-    Slab* align_to_slab(void* ptr) {
-        uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
-        uintptr_t base = addr & ~(SLAB_SIZE - 1);
-        return reinterpret_cast<Slab*>(base);
-    }
-
     size_t block_size_;
     int    node_id_;
     Slab*  current_;
-    std::vector<Slab*> slabs_;
+    std::vector<Slab*, NodeLocalAllocator<Slab*>> slabs_;
+    std::mutex mutex_;
 };
 
 
@@ -258,7 +332,7 @@ private:
                 return classes_[i];
         }
     
-        __builtin_unreachable();
+        throw std::out_of_range("invalid small allocation size class");
     }
 
     int node_id_;

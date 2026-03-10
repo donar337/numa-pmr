@@ -1,6 +1,7 @@
 #pragma once
 
 #include "block.hpp"
+#include <limits>
 
 // ============================================================
 // LARGE OBJECT ALLOCATOR
@@ -14,6 +15,11 @@ public:
     void* allocate(size_t size, size_t alignment) {
         if (alignment < alignof(void*)) {
             alignment = alignof(void*);
+        }
+
+        if (alignment > std::numeric_limits<size_t>::max() - sizeof(BlockHeader) ||
+            size > std::numeric_limits<size_t>::max() - alignment - sizeof(BlockHeader)) {
+            throw std::bad_alloc();
         }
 
         size_t total = size + alignment + sizeof(BlockHeader);
