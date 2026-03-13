@@ -41,9 +41,7 @@
 *.dwo
 
 # build artifacts
-build/
-build-coverage/
-build-bench/
+build*/
 
 # coverage files
 *.gcno

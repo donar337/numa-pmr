@@ -71,6 +71,11 @@ public:
         return header_ptr()->free_count > 0;
     }
 
+    bool is_empty() const noexcept {
+        auto* header = header_ptr();
+        return header->free_count == header->capacity;
+    }
+
 private:
     void init(size_t block_size, int node_id) {
         auto* header = header_ptr();
@@ -219,8 +224,22 @@ public:
         auto* header = reinterpret_cast<Slab::SlabHeader*>(slab);
 
         if (header->free_count == header->capacity) {
-            if (current_ == slab)
+            bool has_retained_empty_slab = false;
+            for (auto* existing : slabs_) {
+                if (existing != slab && existing->is_empty()) {
+                    has_retained_empty_slab = true;
+                    break;
+                }
+            }
+
+            if (!has_retained_empty_slab) {
+                current_ = slab;
+                return;
+            }
+
+            if (current_ == slab) {
                 current_ = nullptr;
+            }
 
             auto it = std::find(slabs_.begin(), slabs_.end(), slab);
             if (it != slabs_.end()) {
@@ -256,6 +275,42 @@ public:
             }
         }
         return VirtualMemory::align_up(size, SizeClassConfig::alignments[SizeClassConfig::kNumBounds - 1]);
+    }
+
+    static constexpr size_t class_index_for_size(size_t size) {
+        constexpr size_t first_threshold = SizeClassConfig::thresholds[0];
+        constexpr size_t second_threshold = SizeClassConfig::thresholds[1];
+        constexpr size_t first_alignment = SizeClassConfig::alignments[0];
+        constexpr size_t second_alignment = SizeClassConfig::alignments[1];
+        constexpr size_t third_alignment = SizeClassConfig::alignments[2];
+        constexpr size_t first_count = first_threshold / first_alignment;
+        constexpr size_t second_count = (second_threshold - first_threshold) / second_alignment;
+
+        if (size == 0) {
+            size = 1;
+        }
+
+        if (size <= first_threshold) {
+            return VirtualMemory::align_up(size, first_alignment) / first_alignment - 1;
+        }
+
+        if (size <= second_threshold) {
+            return first_count +
+                (VirtualMemory::align_up(size, second_alignment) - first_threshold) / second_alignment -
+                1;
+        }
+
+        if (size <= SMALL_LARGE_THRESHOLD) {
+            return first_count + second_count +
+                (VirtualMemory::align_up(size, third_alignment) - second_threshold) / third_alignment -
+                1;
+        }
+
+        throw std::out_of_range("small allocation size exceeds threshold");
+    }
+
+    static constexpr size_t class_index(size_t class_size) {
+        return class_index_for_size(class_size);
     }
 };
 
@@ -312,9 +367,15 @@ private:
 public:
 
     void* allocate(size_t size) {
-        size_t cls_size = SizeClassTable::class_size(size);
-        auto& sc = get_size_class(cls_size);
-        return sc.allocate();
+        return allocate_by_class_index(SizeClassTable::class_index_for_size(size));
+    }
+
+    void* allocate_by_class_index(size_t class_index) {
+        if (class_index >= kNumSizeClasses) {
+            throw std::out_of_range("invalid small allocation size class");
+        }
+
+        return classes_[class_index].allocate();
     }
 
     void deallocate(void* block) {
@@ -327,12 +388,12 @@ public:
 
 private:
     SizeClass& get_size_class(size_t size) {
-        for (size_t i = 0; i < kNumSizeClasses; ++i) {
-            if (kClassSizes[i] == size)
-                return classes_[i];
+        size_t class_index = SizeClassTable::class_index(size);
+        if (class_index >= kNumSizeClasses || kClassSizes[class_index] != size) {
+            throw std::out_of_range("invalid small allocation size class");
         }
-    
-        throw std::out_of_range("invalid small allocation size class");
+
+        return classes_[class_index];
     }
 
     int node_id_;

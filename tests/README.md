@@ -32,4 +32,7 @@ cmake -S . -B build-bench -G Ninja \
 
 cmake --build build-bench
 ./build-bench/tests/one_node/one_node_bench_allocators
+
+cmake --build build-bench-release --target one_node_bench_allocators
+./build-bench-release/tests/one_node/one_node_bench_allocators
 ```

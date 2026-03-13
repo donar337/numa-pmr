@@ -102,8 +102,8 @@ TEST_CASE("one-node unit: small allocator reuses freed blocks", "[one_node][unit
     allocator.deallocate(reused);
 }
 
-// Проверяет, что allocator продолжает работать после полного освобождения slab.
-TEST_CASE("one-node unit: small allocator survives empty slab release", "[one_node][unit][small][slab]") {
+// Проверяет, что allocator удерживает пустой slab и переиспользует его после полного освобождения.
+TEST_CASE("one-node unit: small allocator reuses retained empty slab", "[one_node][unit][small][slab]") {
     SmallObjectAllocator allocator(0);
     constexpr std::size_t size = 128;
 
