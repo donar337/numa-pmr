@@ -2,6 +2,7 @@
 
 #include "size_divide/small_object_allocator.hpp"
 #include "size_divide/large_object_allocator.hpp"
+#include <array>
 #include <vector>
 #include <memory>
 #include <new>
@@ -15,6 +16,57 @@
 // ============================================================
 // NUMA ARENA
 // ============================================================
+
+class ThreadLocalSmallCache {
+public:
+    static constexpr size_t kMaxCachedBlocksPerClass = 64;
+
+    ~ThreadLocalSmallCache() noexcept;
+
+    BlockHeader* pop(size_t class_index, int node_id) noexcept {
+        auto& bin = bins_[class_index];
+        auto** link = &bin.head;
+
+        while (*link) {
+            auto* current = *link;
+            auto** next = reinterpret_cast<BlockHeader**>(current->to_user_ptr());
+
+            if (static_cast<int>(current->node_id) == node_id) {
+                *link = *next;
+                --bin.count;
+                return current;
+            }
+
+            link = next;
+        }
+
+        return nullptr;
+    }
+
+    bool push(BlockHeader* header, size_t class_index) noexcept {
+        auto& bin = bins_[class_index];
+
+        if (bin.count >= kMaxCachedBlocksPerClass) {
+            return false;
+        }
+
+        auto** next = reinterpret_cast<BlockHeader**>(header->to_user_ptr());
+        *next = bin.head;
+        bin.head = header;
+        ++bin.count;
+        return true;
+    }
+
+    void flush() noexcept;
+
+private:
+    struct CacheBin {
+        BlockHeader* head = nullptr;
+        size_t count = 0;
+    };
+
+    std::array<CacheBin, kNumSizeClasses> bins_;
+};
 
 class NumaArena {
 public:
@@ -30,11 +82,16 @@ public:
         }
 
         if (size <= SMALL_LARGE_THRESHOLD && alignment <= ALIGNMENT) {
-            size_t class_size = SizeClassTable::class_size(size);
-            void* block = small_.allocate(size);
+            size_t class_index = SizeClassTable::class_index_for_size(size);
+            size_t class_size = kClassSizes[class_index];
+            auto* header = thread_cache().pop(class_index, node_id_);
 
-            auto* header = reinterpret_cast<BlockHeader*>(block);
-
+            if (!header) {
+                header = reinterpret_cast<BlockHeader*>(
+                    small_.allocate_by_class_index(class_index)
+                );
+            }
+            
             header->node_id = static_cast<uint32_t>(node_id_);
             header->size_class = static_cast<uint32_t>(class_size);
             header->size = 0;
@@ -55,6 +112,11 @@ public:
         }
 
         if (header->size_class != 0) {
+            size_t class_index = SizeClassTable::class_index(header->size_class);
+            if (thread_cache().push(header, class_index)) {
+                return;
+            }
+
             small_.deallocate(header);
         } else {
             large_.deallocate(ptr, header->size);
@@ -66,6 +128,21 @@ public:
     }
 
 private:
+    friend class ThreadLocalSmallCache;
+
+    static ThreadLocalSmallCache& thread_cache() {
+        static thread_local ThreadLocalSmallCache cache;
+        return cache;
+    }
+
+    void deallocate_cached_small(BlockHeader* header) {
+        if (static_cast<int>(header->node_id) != node_id_) {
+            throw std::invalid_argument("cached block routed to non-owner NUMA arena");
+        }
+
+        small_.deallocate(header);
+    }
+
     int node_id_;
     SmallObjectAllocator small_;
     LargeObjectAllocator large_;
@@ -198,3 +275,25 @@ private:
 
     std::vector<NumaArenaPtr> arenas_;
 };
+
+inline ThreadLocalSmallCache::~ThreadLocalSmallCache() noexcept {
+    flush();
+}
+
+inline void ThreadLocalSmallCache::flush() noexcept {
+    for (auto& bin : bins_) {
+        while (bin.head) {
+            BlockHeader* header = bin.head;
+            auto** next = reinterpret_cast<BlockHeader**>(header->to_user_ptr());
+            bin.head = *next;
+            --bin.count;
+
+            try {
+                NumaManager::instance()
+                    .arena_for_node(static_cast<int>(header->node_id))
+                    .deallocate_cached_small(header);
+            } catch (...) {
+            }
+        }
+    }
+}
