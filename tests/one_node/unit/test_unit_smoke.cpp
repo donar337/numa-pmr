@@ -146,6 +146,41 @@ TEST_CASE("one-node unit: large allocator honors alignment and metadata", "[one_
     }
 }
 
+// Проверяет, что bucketed large cache переиспользует span и накапливает статистику эффективности.
+TEST_CASE("one-node unit: large allocator caches bucketed spans", "[one_node][unit][large]") {
+    LargeCacheConfig config;
+    config.policy = LargeCachePolicy::Bucketed;
+    config.enable_stats = true;
+    config.small_quantum = 64 * 1024;
+    config.max_cached_spans = 4;
+    config.max_cached_bytes = 1024 * 1024;
+
+    LargeObjectAllocator allocator(0, config);
+
+    void* first = allocator.allocate(8192, alignof(std::max_align_t));
+    auto* first_header = BlockHeader::from_user_ptr(first);
+    REQUIRE(first_header->total_size == 64 * 1024);
+    allocator.deallocate(first, 8192);
+
+    auto after_first = allocator.cache_stats();
+    REQUIRE(after_first.cache_misses == 1);
+    REQUIRE(after_first.cache_hits == 0);
+    REQUIRE(after_first.cached_spans == 1);
+    REQUIRE(after_first.cached_bytes == 64 * 1024);
+
+    void* second = allocator.allocate(16384, alignof(std::max_align_t));
+    auto* second_header = BlockHeader::from_user_ptr(second);
+    REQUIRE(second_header->raw_ptr == first_header->raw_ptr);
+    REQUIRE(second_header->total_size == 64 * 1024);
+
+    auto after_second = allocator.cache_stats();
+    REQUIRE(after_second.cache_hits == 1);
+    REQUIRE(after_second.cache_misses == 1);
+    REQUIRE(after_second.bucket_bytes > after_second.requested_bytes);
+
+    allocator.deallocate(second, 16384);
+}
+
 // Проверяет, что arena корректно маршрутизирует small, large, zero-size и over-aligned запросы.
 TEST_CASE("one-node unit: arena selects correct allocation paths", "[one_node][unit][arena]") {
     NumaArena arena(0);
