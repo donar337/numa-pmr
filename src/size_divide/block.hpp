@@ -15,8 +15,25 @@ struct SizeClassConfig {
     static constexpr size_t kNumBounds = 3;
     static constexpr size_t thresholds[kNumBounds] = {512, 1024, SMALL_LARGE_THRESHOLD};
     static constexpr size_t alignments[kNumBounds] = {16, 64, 256};
+
+    static constexpr size_t max_cached_bytes_for_class(size_t class_size) noexcept {
+        if (class_size <= 256) {
+            return 128 * 1024;
+        }
+
+        if (class_size <= 1024) {
+            return 128 * 1024;
+        }
+
+        if (class_size <= 2048) {
+            return 256 * 1024;
+        }
+
+        return 512 * 1024;
+    }
 };
 
+// максимальное фундаментальное выравнивание (обычно 16 байт, 8 на 32-битной архитектуре)
 static constexpr size_t ALIGNMENT = alignof(std::max_align_t);
 
 // ============================================================
@@ -40,7 +57,7 @@ inline void* sub_bytes(void* p, size_t offset) noexcept {
 // BLOCK HEADER
 // ============================================================
 
-struct alignas(ALIGNMENT) BlockHeader {
+struct alignas(ALIGNMENT) BlockHeader { // 32 байта
     uint32_t node_id;
     uint32_t size_class;   // 0 = large
     uint64_t size;         // only for large allocations
