@@ -13,14 +13,8 @@
 #include <sched.h>
 #include <numa.h>
 
-// ============================================================
-// NUMA ARENA
-// ============================================================
-
 class ThreadLocalSmallCache {
 public:
-    static constexpr size_t kMaxCachedBlocksPerClass = 64;
-
     ~ThreadLocalSmallCache() noexcept;
 
     BlockHeader* pop(size_t class_index, int node_id) noexcept {
@@ -34,6 +28,7 @@ public:
             if (static_cast<int>(current->node_id) == node_id) {
                 *link = *next;
                 --bin.count;
+                bin.bytes -= current->size_class;
                 return current;
             }
 
@@ -45,8 +40,9 @@ public:
 
     bool push(BlockHeader* header, size_t class_index) noexcept {
         auto& bin = bins_[class_index];
+        const size_t class_size = header->size_class;
 
-        if (bin.count >= kMaxCachedBlocksPerClass) {
+        if (bin.bytes + class_size > SizeClassConfig::max_cached_bytes_for_class(class_size)) {
             return false;
         }
 
@@ -54,6 +50,7 @@ public:
         *next = bin.head;
         bin.head = header;
         ++bin.count;
+        bin.bytes += class_size;
         return true;
     }
 
@@ -63,10 +60,15 @@ private:
     struct CacheBin {
         BlockHeader* head = nullptr;
         size_t count = 0;
+        size_t bytes = 0;
     };
 
     std::array<CacheBin, kNumSizeClasses> bins_;
 };
+
+// ============================================================
+// NUMA ARENA
+// ============================================================
 
 class NumaArena {
 public:
@@ -287,6 +289,7 @@ inline void ThreadLocalSmallCache::flush() noexcept {
             auto** next = reinterpret_cast<BlockHeader**>(header->to_user_ptr());
             bin.head = *next;
             --bin.count;
+            bin.bytes -= header->size_class;
 
             try {
                 NumaManager::instance()
