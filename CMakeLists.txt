@@ -8,6 +8,7 @@ project(numa_allocator
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(NUMA_ALLOCATOR_BUILD_TESTS "Build NUMA allocator tests" ON)
+option(NUMA_ALLOCATOR_BUILD_PLAYGROUND "Build allocator playground executable" OFF)
 option(NUMA_ALLOCATOR_BUILD_BENCHMARKS "Build NUMA allocator benchmarks" OFF)
 option(NUMA_ALLOCATOR_ENABLE_COVERAGE "Enable coverage flags for supported targets" OFF)
 
@@ -57,6 +58,21 @@ function(numa_allocator_enable_coverage target)
 endfunction()
 
 numa_allocator_enable_coverage(numa_allocator)
+
+if(NUMA_ALLOCATOR_BUILD_PLAYGROUND)
+    add_executable(numa_allocator_playground
+        tools/allocator_playground.cpp
+    )
+
+    target_compile_features(numa_allocator_playground PRIVATE cxx_std_20)
+
+    target_link_libraries(numa_allocator_playground
+        PRIVATE
+            numa_allocator
+    )
+
+    numa_allocator_enable_coverage(numa_allocator_playground)
+endif()
 
 if(NUMA_ALLOCATOR_BUILD_TESTS)
     enable_testing()
