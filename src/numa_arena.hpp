@@ -5,13 +5,10 @@
 #include <array>
 #include <vector>
 #include <memory>
-#include <new>
-#include <thread>
-#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <sched.h>
-#include <numa.h>
 
 class ThreadLocalSmallCache {
 public:
@@ -74,8 +71,8 @@ class NumaArena {
 public:
     explicit NumaArena(int node_id)
         : node_id_(node_id),
-            small_(node_id),
-            large_(node_id)
+          small_(node_id),
+          large_(node_id)
     {}
 
     void* allocate(size_t size, size_t alignment) {
@@ -93,7 +90,7 @@ public:
                     small_.allocate_by_class_index(class_index)
                 );
             }
-            
+
             header->node_id = static_cast<uint32_t>(node_id_);
             header->size_class = static_cast<uint32_t>(class_size);
             header->size = 0;
@@ -151,12 +148,7 @@ private:
 };
 
 struct NumaArenaDeleter {
-    void operator()(NumaArena* arena) const noexcept {
-        if (!arena) return;
-
-        arena->~NumaArena();
-        VirtualMemory::release(arena, sizeof(NumaArena));
-    }
+    void operator()(NumaArena* arena) const noexcept;
 };
 
 using NumaArenaPtr = std::unique_ptr<NumaArena, NumaArenaDeleter>;
@@ -201,74 +193,12 @@ public:
     }
 
 private:
-    NumaManager() {
-        init_topology();
-        init_arenas();
-    }
+    NumaManager();
 
-    void init_topology() {
-        if (numa_available() < 0) {
-            init_single_node_topology();
-            return;
-        }
-
-        cpu_count_ = numa_num_configured_cpus();
-
-        if (cpu_count_ == 0)
-            cpu_count_ = 1;
-
-        int max_node = numa_max_node();
-        node_count_ = max_node >= 0 ? max_node + 1 : 1;
-
-        if (node_count_ == 0)
-            node_count_ = 1;
-
-        cpu_to_node_.resize(cpu_count_, 0);
-
-        for (int cpu = 0; cpu < cpu_count_; ++cpu) {
-            int node = numa_node_of_cpu(cpu);
-
-            if (node >= 0 && node < node_count_) {
-                cpu_to_node_[cpu] = node;
-            }
-        }
-    }
-
-    void init_single_node_topology() {
-        cpu_count_ = std::thread::hardware_concurrency();
-
-        if (cpu_count_ == 0)
-            cpu_count_ = 1;
-
-        node_count_ = 1;
-        cpu_to_node_.assign(cpu_count_, 0);
-    }
-
-    void init_arenas() {
-        arenas_.reserve(node_count_);
-
-        for (int i = 0; i < node_count_; ++i) {
-            arenas_.emplace_back(create_arena_on_node(i));
-        }
-    }
-
-    static NumaArenaPtr create_arena_on_node(int node_id) {
-        void* mem = VirtualMemory::reserve(sizeof(NumaArena));
-
-        VirtualMemory::bind_to_node(
-            mem,
-            sizeof(NumaArena),
-            node_id,
-            VirtualMemory::NumaPolicy::Bind
-        );
-
-        try {
-            return NumaArenaPtr(new (mem) NumaArena(node_id));
-        } catch (...) {
-            VirtualMemory::release(mem, sizeof(NumaArena));
-            throw;
-        }
-    }
+    void init_topology();
+    void init_single_node_topology();
+    void init_arenas();
+    static NumaArenaPtr create_arena_on_node(int node_id);
 
     int cpu_count_  = 0;
     int node_count_ = 0;

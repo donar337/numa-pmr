@@ -61,13 +61,7 @@ public:
         cache_.reserve(max_cached_spans_);
     }
 
-    ~LargeObjectAllocator() {
-        std::lock_guard<std::mutex> lock(cache_mutex_);
-
-        for (auto& span : cache_) {
-            VirtualMemory::release(span.raw_ptr, span.bucket_size);
-        }
-    }
+    ~LargeObjectAllocator();
 
     void* allocate(size_t size, size_t alignment) {
         if (alignment < alignof(void*)) {
@@ -104,12 +98,8 @@ public:
 
     void* allocate_from_span(size_t size, size_t alignment, size_t total_size, void* raw) {
         uintptr_t raw_addr = reinterpret_cast<uintptr_t>(raw);
-
         uintptr_t start = raw_addr + sizeof(BlockHeader);
-
-        uintptr_t aligned =
-            VirtualMemory::align_up(start, alignment);
-
+        uintptr_t aligned = VirtualMemory::align_up(start, alignment);
         void* user_ptr = reinterpret_cast<void*>(aligned);
 
         auto* header = reinterpret_cast<BlockHeader*>(
@@ -146,18 +136,7 @@ private:
     };
 
 public:
-    LargeCacheStats cache_stats() const noexcept {
-        std::lock_guard<std::mutex> lock(cache_mutex_);
-
-        return {
-            cache_hits_.load(std::memory_order_relaxed),
-            cache_misses_.load(std::memory_order_relaxed),
-            static_cast<uint64_t>(cache_.size()),
-            static_cast<uint64_t>(cached_bytes_),
-            requested_bytes_.load(std::memory_order_relaxed),
-            bucket_bytes_.load(std::memory_order_relaxed),
-        };
-    }
+    LargeCacheStats cache_stats() const noexcept;
 
 private:
     static size_t checked_align_up(size_t value, size_t alignment) {
