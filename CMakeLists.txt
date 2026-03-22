@@ -28,7 +28,10 @@ set_target_properties(NUMA::NUMA PROPERTIES
 )
 
 add_library(numa_allocator STATIC
-    src/numa_allocator.cpp
+    src/virtual_memory.cpp
+    src/size_divide/large_object_allocator.cpp
+    src/size_divide/small_object_allocator.cpp
+    src/numa_arena.cpp
 )
 
 target_include_directories(numa_allocator

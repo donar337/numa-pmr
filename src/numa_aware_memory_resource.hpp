@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory_resource>
 #include "numa_arena.hpp"
 
