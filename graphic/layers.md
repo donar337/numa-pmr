@@ -1,8 +1,13 @@
 ```mermaid
 flowchart TD
-    T[Thread] --> TLC[Thread Local Cache]
 
-    TLC --> NM[NumaManager]
+    T[Thread]
+
+    T --> PMR[NumaMemoryResource]
+
+    PMR --> TLC[Thread Local Cache]
+
+    PMR --> NM[NumaManager]
 
     NM --> NA[NumaArena per NUMA node]
 
@@ -15,10 +20,11 @@ flowchart TD
     SC --> SL[Slabs]
 
     SL --> VM[Virtual Memory]
-
     LOA --> VM
 
-    VM --> BH[Block Header]
+    VM --> NUMA[NUMA placement mmap + mbind]
+
+    NUMA --> BH[Block Header]
     BH --> UM[User Memory]
 
     subgraph NUMA Node
@@ -27,6 +33,5 @@ flowchart TD
         SC
         SL
         LOA
-        DEC
     end
 ```

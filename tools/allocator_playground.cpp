@@ -25,13 +25,13 @@ int main() {
         constexpr std::size_t kSmall = 256;
         void* small = arena.allocate(kSmall, alignof(std::max_align_t));
         std::memset(small, 0xCC, kSmall);
-        arena.deallocate(small, kSmall, alignof(std::max_align_t));
+        arena.deallocate(small);
 
         constexpr std::size_t kLarge = SMALL_LARGE_THRESHOLD + 64 * 1024;
         constexpr std::size_t kAlign = 64;
         void* large = arena.allocate(kLarge, kAlign);
         std::memset(large, 0x33, kLarge);
-        arena.deallocate(large, kLarge, kAlign);
+        arena.deallocate(large);
     }
 
     // Singleton-менеджер: текущая арена потока.
@@ -39,7 +39,7 @@ int main() {
         void* p =
             mgr.arena_for_current_thread().allocate(512, alignof(std::max_align_t));
         std::memset(p, 0xEE, 512);
-        mgr.arena_for_current_thread().deallocate(p, 512, alignof(std::max_align_t));
+        mgr.arena_for_current_thread().deallocate(p);
     }
 
     // std::pmr поверх NumaMemoryResource.

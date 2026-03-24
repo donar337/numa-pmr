@@ -9,13 +9,13 @@
 #include <utility>
 #include <vector>
 
-// ============================================================
-// SLAB
-// ============================================================
-
+/**
+ * Slab is a contiguous memory region allocated from the OS.
+ * It is used to store small objects with same size class.
+*/ 
 class Slab {
 public:
-    struct SlabHeader {
+    struct SlabHeader { // 24 bytes on 64-bit architecture
         uint32_t node_id;
         uint32_t block_size;
         uint32_t capacity;
@@ -35,11 +35,12 @@ private:
     SlabHeader* header_ptr() const noexcept;
 };
 
-
-// ============================================================
-// NODE LOCAL METADATA ALLOCATOR
-// ============================================================
-
+/**
+ * STL-compatible allocator that backs containers (e.g. std::vector<Slab*, ...>)
+ * with memory reserved via VirtualMemory and bound to a fixed NUMA node.
+ *
+ * Grandson this allocators has allocators inside, run and eat it, while it's fast.
+ */
 template <typename T>
 class NodeLocalAllocator {
 public:
@@ -95,15 +96,30 @@ bool operator!=(const NodeLocalAllocator<T>& lhs,
 }
 
 
-// ============================================================
-// SIZE CLASS
-// ============================================================
-
+/**
+ * Owns all slabs for one small-object size class.
+ */
 class SizeClass {
 public:
     SizeClass(size_t block_size, int node_id);
 
+    /**
+     * Returns a pointer to one block in some slab (layout: BlockHeader at ptr,
+     * user payload follows; see BlockHeader::to_user_ptr).
+     *
+     * Guarantees (under this instance's mutex): reuses free blocks from
+     * current_ when possible, otherwise scans slabs_, otherwise creates a new
+     * slab via Slab::create on node_id_.
+     */
     void* allocate();
+
+    /**
+     * @param ptr  Block pointer previously returned by allocate() for this size class.
+     *
+     * Guarantees (under this instance's mutex): returns the block to its slab's
+     * free list. If the slab becomes fully empty and another empty slab is already kept,
+     * removes this slab, otherwise may retain the slab as current_.
+     */
     void deallocate(void* ptr);
 
 private:
@@ -119,10 +135,16 @@ private:
 // SIZE CLASS TABLE
 // ============================================================
 
+/**
+ * Pure constexpr mapping between user-requested allocation sizes and small
+ * slab size classes.
+ */
 class SizeClassTable {
 public:
-    static constexpr size_t kMaxSmallSize = SMALL_LARGE_THRESHOLD;
-
+    /**
+     * Rounds @param size up to the size-class granularity for the first bucket
+     * where @param size <= thresholds[i].
+     */
     static constexpr size_t class_size(size_t size) {
         for (size_t i = 0; i < SizeClassConfig::kNumBounds; ++i) {
             if (size <= SizeClassConfig::thresholds[i]) {
@@ -132,6 +154,11 @@ public:
         return VirtualMemory::align_up(size, SizeClassConfig::alignments[SizeClassConfig::kNumBounds - 1]);
     }
 
+    /**
+     * Dense index of class_size among all distinct values produced by class_size.
+     *
+     * @param size must be in [1, SMALL_LARGE_THRESHOLD], 0 will be treated as 1, otherwise throws std::out_of_range.
+     */
     static constexpr size_t class_index_for_size(size_t size) {
         constexpr size_t first_threshold = SizeClassConfig::thresholds[0];
         constexpr size_t second_threshold = SizeClassConfig::thresholds[1];
@@ -163,17 +190,11 @@ public:
 
         throw std::out_of_range("small allocation size exceeds threshold");
     }
-
-    static constexpr size_t class_index(size_t class_size) {
-        return class_index_for_size(class_size);
-    }
 };
 
 
-// ============================================================
-// SMALL OBJECT ALLOCATOR
-// ============================================================
 
+// Derives how many distinct size classes wil be at compile time.
 constexpr size_t count_distinct_size_classes() {
     size_t count = 0;
     size_t last = 0;
@@ -189,6 +210,9 @@ constexpr size_t count_distinct_size_classes() {
 }
 static constexpr size_t kNumSizeClasses = count_distinct_size_classes();
 
+/**
+ * Ordered list of distinct class sizes.
+ */
 static constexpr std::array<size_t, kNumSizeClasses> kClassSizes = []() constexpr {
     std::array<size_t, kNumSizeClasses> arr{};
 
@@ -206,6 +230,12 @@ static constexpr std::array<size_t, kNumSizeClasses> kClassSizes = []() constexp
     return arr;
 }();
 
+/**
+ * Entry point for small allocations on one NUMA node.
+ *
+ * Contains one SizeClass per size class. Concurrent calls may run in parallel
+ * when they target different size classes, same class is serialized inside SizeClass.
+ */
 class SmallObjectAllocator {
 public:
     explicit SmallObjectAllocator(int node_id)
@@ -213,6 +243,7 @@ public:
     {}
 
 private:
+    /** Implements the public constructor via a pack expansion over kClassSizes. */
     template <std::size_t... I>
     SmallObjectAllocator(int node_id, std::index_sequence<I...>)
         : node_id_(node_id),
