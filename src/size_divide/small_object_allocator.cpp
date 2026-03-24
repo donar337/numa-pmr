@@ -1,5 +1,9 @@
 #include "small_object_allocator.hpp"
 
+// ============================================================
+// SLAB
+// ============================================================
+
 Slab* Slab::create(size_t block_size, int node_id) {
     void* mem = VirtualMemory::reserve(SLAB_SIZE);
 
@@ -55,7 +59,7 @@ bool Slab::is_empty() const noexcept {
 
 void Slab::init(size_t block_size, int node_id) {
     auto* header = header_ptr();
-    header->node_id   = node_id;
+    header->node_id    = node_id;
     header->block_size = block_size;
 
     char* raw = reinterpret_cast<char*>(this) + sizeof(SlabHeader);
@@ -88,6 +92,10 @@ Slab::SlabHeader* Slab::header_ptr() const noexcept {
         const_cast<Slab*>(this)
     );
 }
+
+// ============================================================
+// SIZE CLASS
+// ============================================================
 
 SizeClass::SizeClass(size_t block_size, int node_id)
     : block_size_(block_size),
@@ -155,6 +163,10 @@ void SizeClass::deallocate(void* ptr) {
     }
 }
 
+// ============================================================
+// SMALL OBJECT ALLOCATOR
+// ============================================================
+
 void* SmallObjectAllocator::allocate(size_t size) {
     return allocate_by_class_index(SizeClassTable::class_index_for_size(size));
 }
@@ -176,7 +188,7 @@ void SmallObjectAllocator::deallocate(void* block) {
 }
 
 SizeClass& SmallObjectAllocator::get_size_class(size_t size) {
-    size_t class_index = SizeClassTable::class_index(size);
+    size_t class_index = SizeClassTable::class_index_for_size(size);
     if (class_index >= kNumSizeClasses || kClassSizes[class_index] != size) {
         throw std::out_of_range("invalid small allocation size class");
     }

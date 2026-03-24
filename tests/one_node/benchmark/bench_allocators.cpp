@@ -9,13 +9,13 @@
 
 namespace {
 
-// backend: 0 — NumaMemoryResource, 1 — std::pmr::new_delete_resource (см. регистрацию внизу файла).
+// backend: 0 — NumaMemoryResource, 1 — std::pmr::new_delete_resource (see registration at bottom of file).
 constexpr int kNumaBackend = 0;
 constexpr int kNewDeleteBackend = 1;
 
 constexpr std::array<std::size_t, 8> kMixedSmallSizes{1, 16, 17, 64, 513, 1024, 2048, 4096};
 
-// Один allocate + deallocate за итерацию state (измеряется внутри for (_ : state)).
+// One allocate + deallocate per state iteration (measured inside for (_ : state)).
 void immediate_loop(benchmark::State& state, std::pmr::memory_resource* mr, std::size_t size) {
     for (auto _ : state) {
         void* ptr = mr->allocate(size, alignof(std::max_align_t));
@@ -24,7 +24,7 @@ void immediate_loop(benchmark::State& state, std::pmr::memory_resource* mr, std:
     }
 }
 
-// Immediate allocate/deallocate на фиксированном размере; размеры включают мелкие, средние и крупные (до 1 MiB).
+// Immediate allocate/deallocate at a fixed size; sizes include small, medium, and large (up to 1 MiB).
 void BM_ImmediateAllocateFree(benchmark::State& state) {
     const auto size = static_cast<std::size_t>(state.range(0));
     const int backend = static_cast<int>(state.range(1));
@@ -40,7 +40,7 @@ void BM_ImmediateAllocateFree(benchmark::State& state) {
     state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(size));
 }
 
-// Полный цикл batch: все allocate, затем все deallocate.
+// Full batch cycle: all allocates, then all deallocates.
 void batch_loop(
     benchmark::State& state,
     std::pmr::memory_resource* mr,
@@ -60,7 +60,7 @@ void batch_loop(
     }
 }
 
-// Сначала выделить batch блоков, затем освободить — чтобы увидеть эффект повторного использования slab/cache.
+// Allocate a batch of blocks first, then free them — to observe slab/cache reuse effects.
 void BM_BatchAllocateFree(benchmark::State& state) {
     const auto size = static_cast<std::size_t>(state.range(0));
     const auto batch_size = static_cast<std::size_t>(state.range(1));
@@ -78,7 +78,7 @@ void BM_BatchAllocateFree(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(batch_size));
 }
 
-// Один размер из kMixedSmallSizes за итерацию state.
+// One size from kMixedSmallSizes per state iteration.
 void mixed_small_loop(benchmark::State& state, std::pmr::memory_resource* mr) {
     std::size_t index = 0;
 
@@ -90,7 +90,7 @@ void mixed_small_loop(benchmark::State& state, std::pmr::memory_resource* mr) {
     }
 }
 
-// Чередование небольших размеров выделения (типичный «шумный» паттерн для small-object путей).
+// Alternating small allocation sizes (typical noisy pattern for small-object paths).
 void BM_MixedSmallAllocateFree(benchmark::State& state) {
     const int backend = static_cast<int>(state.range(0));
 
@@ -105,7 +105,7 @@ void BM_MixedSmallAllocateFree(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations());
 }
 
-// count раз push_back в pmr::vector на заданном memory_resource.
+// count push_back operations into pmr::vector on the given memory_resource.
 void pmr_vector_push_back_loop(benchmark::State& state, std::pmr::memory_resource* mr, int count) {
     for (auto _ : state) {
         std::pmr::vector<int> values(mr);
@@ -116,7 +116,7 @@ void pmr_vector_push_back_loop(benchmark::State& state, std::pmr::memory_resourc
     }
 }
 
-// Рост std::pmr::vector<int> через push_back (реалистичная нагрузка на PMR + перевыделения буфера).
+// Growing std::pmr::vector<int> via push_back (realistic PMR load + buffer reallocations).
 void BM_PmrVectorPushBack(benchmark::State& state) {
     const auto count = static_cast<int>(state.range(0));
     const int backend = static_cast<int>(state.range(1));
@@ -134,7 +134,7 @@ void BM_PmrVectorPushBack(benchmark::State& state) {
 
 } // namespace
 
-// Регистрация: для каждого сценария декартово произведение аргументов × {NUMA, new_delete}.
+// Registration: for each scenario, Cartesian product of arguments × {NUMA, new_delete}.
 BENCHMARK(BM_ImmediateAllocateFree)
     ->ArgNames({"size", "backend"})
     ->ArgsProduct({
@@ -142,7 +142,7 @@ BENCHMARK(BM_ImmediateAllocateFree)
         {kNumaBackend, kNewDeleteBackend},
     });
 
-// batch — сколько выделений подряд до фазы освобождения (здесь 128).
+// batch — how many consecutive allocations before the free phase (128 here).
 BENCHMARK(BM_BatchAllocateFree)
     ->ArgNames({"size", "batch", "backend"})
     ->ArgsProduct({

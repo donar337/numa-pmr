@@ -4,12 +4,13 @@
 #include "numa_arena.hpp"
 #include "size_divide/large_object_allocator.hpp"
 #include "size_divide/small_object_allocator.hpp"
+#include "virtual_memory.hpp"
 
 #include <array>
 #include <cstddef>
 #include <vector>
 
-// Проверяет граничные значения и монотонность таблицы small size classes.
+// Verifies boundary values and monotonicity of the small size class table.
 TEST_CASE("one-node unit: size classes are rounded consistently", "[one_node][unit][size_class]") {
     REQUIRE(SizeClassTable::class_size(1) == 16);
     REQUIRE(SizeClassTable::class_size(16) == 16);
@@ -29,7 +30,7 @@ TEST_CASE("one-node unit: size classes are rounded consistently", "[one_node][un
     }
 }
 
-// Проверяет базовые операции virtual memory: выравнивание, reserve(0), запись и release.
+// Verifies basic virtual memory operations: alignment, reserve(0), write, and release.
 TEST_CASE("one-node unit: virtual memory can reserve writable pages", "[one_node][unit][virtual_memory]") {
     REQUIRE(VirtualMemory::align_up(0, 4096) == 0);
     REQUIRE(VirtualMemory::align_up(1, 4096) == 4096);
@@ -44,7 +45,7 @@ TEST_CASE("one-node unit: virtual memory can reserve writable pages", "[one_node
     VirtualMemory::release(page, VirtualMemory::page_size());
 }
 
-// Проверяет, что small allocator выдаёт writable blocks и заполняет slab metadata в header.
+// Verifies that the small allocator returns writable blocks and fills slab metadata in the header.
 TEST_CASE("one-node unit: small allocator initializes block headers", "[one_node][unit][small]") {
     SmallObjectAllocator allocator(0);
 
@@ -65,7 +66,7 @@ TEST_CASE("one-node unit: small allocator initializes block headers", "[one_node
     }
 }
 
-// Проверяет, что освобождённый small block может быть переиспользован без поломки соседних блоков.
+// Verifies that a freed small block can be reused without corrupting neighboring blocks.
 TEST_CASE("one-node unit: small allocator reuses freed blocks", "[one_node][unit][small][reuse]") {
     SmallObjectAllocator allocator(0);
     constexpr std::size_t size = 64;
@@ -102,7 +103,7 @@ TEST_CASE("one-node unit: small allocator reuses freed blocks", "[one_node][unit
     allocator.deallocate(reused);
 }
 
-// Проверяет, что allocator удерживает пустой slab и переиспользует его после полного освобождения.
+// Verifies that the allocator retains an empty slab and reuses it after a full free.
 TEST_CASE("one-node unit: small allocator reuses retained empty slab", "[one_node][unit][small][slab]") {
     SmallObjectAllocator allocator(0);
     constexpr std::size_t size = 128;
@@ -124,7 +125,7 @@ TEST_CASE("one-node unit: small allocator reuses retained empty slab", "[one_nod
     allocator.deallocate(second);
 }
 
-// Проверяет large allocator: alignment, header invariants и корректное освобождение.
+// Verifies large allocator: alignment, header invariants, and correct deallocation.
 TEST_CASE("one-node unit: large allocator honors alignment and metadata", "[one_node][unit][large]") {
     LargeObjectAllocator allocator(0);
 
@@ -142,46 +143,51 @@ TEST_CASE("one-node unit: large allocator honors alignment and metadata", "[one_
         REQUIRE(header->total_size >= size + alignment + sizeof(BlockHeader));
 
         numa_test::touch_memory(ptr, size);
-        allocator.deallocate(ptr, size);
+        allocator.deallocate(ptr);
     }
 }
 
-// Проверяет, что bucketed large cache переиспользует span и накапливает статистику эффективности.
-TEST_CASE("one-node unit: large allocator caches bucketed spans", "[one_node][unit][large]") {
-    LargeCacheConfig config;
-    config.policy = LargeCachePolicy::Bucketed;
-    config.enable_stats = true;
-    config.small_quantum = 64 * 1024;
-    config.max_cached_spans = 4;
-    config.max_cached_bytes = 1024 * 1024;
+// Verifies that the large allocator caches page-aligned exact spans and reuses them only when
+// the rounded span size matches (same requested size and alignment).
+TEST_CASE("one-node unit: large allocator caches exact-size spans", "[one_node][unit][large]") {
+    constexpr std::size_t alignment = alignof(std::max_align_t);
+    constexpr std::size_t user_size = 8192;
+    const std::size_t required_inner = user_size + alignment + sizeof(BlockHeader);
+    const std::size_t expected_span =
+        VirtualMemory::align_up(required_inner, VirtualMemory::page_size());
 
-    LargeObjectAllocator allocator(0, config);
+    LargeObjectAllocator allocator(0, 4, 1024 * 1024);
 
-    void* first = allocator.allocate(8192, alignof(std::max_align_t));
+    void* first = allocator.allocate(user_size, alignment);
     auto* first_header = BlockHeader::from_user_ptr(first);
-    REQUIRE(first_header->total_size == 64 * 1024);
-    allocator.deallocate(first, 8192);
+    REQUIRE(first_header->total_size == expected_span);
+    REQUIRE(first_header->size == user_size);
+    void* first_raw = first_header->raw_ptr;
 
-    auto after_first = allocator.cache_stats();
-    REQUIRE(after_first.cache_misses == 1);
-    REQUIRE(after_first.cache_hits == 0);
-    REQUIRE(after_first.cached_spans == 1);
-    REQUIRE(after_first.cached_bytes == 64 * 1024);
+    allocator.deallocate(first);
 
-    void* second = allocator.allocate(16384, alignof(std::max_align_t));
+    void* second = allocator.allocate(user_size, alignment);
     auto* second_header = BlockHeader::from_user_ptr(second);
-    REQUIRE(second_header->raw_ptr == first_header->raw_ptr);
-    REQUIRE(second_header->total_size == 64 * 1024);
+    REQUIRE(second_header->raw_ptr == first_raw);
+    REQUIRE(second_header->total_size == expected_span);
 
-    auto after_second = allocator.cache_stats();
-    REQUIRE(after_second.cache_hits == 1);
-    REQUIRE(after_second.cache_misses == 1);
-    REQUIRE(after_second.bucket_bytes > after_second.requested_bytes);
+    allocator.deallocate(second);
 
-    allocator.deallocate(second, 16384);
+    constexpr std::size_t larger_user_size = 16384;
+    const std::size_t larger_expected_span = VirtualMemory::align_up(
+        larger_user_size + alignment + sizeof(BlockHeader),
+        VirtualMemory::page_size());
+    REQUIRE(larger_expected_span != expected_span);
+
+    void* third = allocator.allocate(larger_user_size, alignment);
+    auto* third_header = BlockHeader::from_user_ptr(third);
+    REQUIRE(third_header->raw_ptr != first_raw);
+    REQUIRE(third_header->total_size == larger_expected_span);
+
+    allocator.deallocate(third);
 }
 
-// Проверяет, что arena корректно маршрутизирует small, large, zero-size и over-aligned запросы.
+// Verifies that the arena correctly routes small, large, zero-size, and over-aligned requests.
 TEST_CASE("one-node unit: arena selects correct allocation paths", "[one_node][unit][arena]") {
     NumaArena arena(0);
 
@@ -190,25 +196,25 @@ TEST_CASE("one-node unit: arena selects correct allocation paths", "[one_node][u
     REQUIRE(small_header->node_id == 0);
     REQUIRE(small_header->size_class == SizeClassTable::class_size(128));
     numa_test::touch_memory(small, 128);
-    arena.deallocate(small, 128, alignof(std::max_align_t));
+    arena.deallocate(small);
 
     void* zero = arena.allocate(0, alignof(std::max_align_t));
     auto* zero_header = BlockHeader::from_user_ptr(zero);
     REQUIRE(zero_header->node_id == 0);
     REQUIRE(zero_header->size_class == SizeClassTable::class_size(1));
     numa_test::touch_memory(zero, 1);
-    arena.deallocate(zero, 0, alignof(std::max_align_t));
+    arena.deallocate(zero);
 
     void* large = arena.allocate(SMALL_LARGE_THRESHOLD + 1, alignof(std::max_align_t));
     auto* large_header = BlockHeader::from_user_ptr(large);
     REQUIRE(large_header->node_id == 0);
     REQUIRE(large_header->size_class == 0);
     numa_test::touch_memory(large, SMALL_LARGE_THRESHOLD + 1);
-    arena.deallocate(large, SMALL_LARGE_THRESHOLD + 1, alignof(std::max_align_t));
+    arena.deallocate(large);
 
     void* over_aligned = arena.allocate(128, 64);
     auto* aligned_header = BlockHeader::from_user_ptr(over_aligned);
     REQUIRE(numa_test::is_aligned(over_aligned, 64));
     REQUIRE(aligned_header->size_class == 0);
-    arena.deallocate(over_aligned, 128, 64);
+    arena.deallocate(over_aligned);
 }

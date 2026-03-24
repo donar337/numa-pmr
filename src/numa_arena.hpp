@@ -118,7 +118,7 @@ public:
 
             small_.deallocate(header);
         } else {
-            large_.deallocate(ptr, header->size);
+            large_.deallocate(ptr);
         }
     }
 

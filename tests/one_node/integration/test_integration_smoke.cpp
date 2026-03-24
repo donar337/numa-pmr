@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-// Проверяет, что PMR resource обслуживает small, large и zero-size allocation cycles.
+// Verifies that the PMR resource handles small, large, and zero-size allocation cycles.
 TEST_CASE("one-node integration: PMR allocation cycles are writable and reusable", "[one_node][integration][pmr]") {
     NumaMemoryResource resource;
 
@@ -21,7 +21,7 @@ TEST_CASE("one-node integration: PMR allocation cycles are writable and reusable
     }
 }
 
-// Проверяет, что стандартные PMR-контейнеры корректно используют NUMA resource.
+// Verifies that standard PMR containers use the NUMA resource correctly.
 TEST_CASE("one-node integration: PMR containers work with NUMA resource", "[one_node][integration][pmr]") {
     NumaMemoryResource resource;
 
@@ -40,7 +40,7 @@ TEST_CASE("one-node integration: PMR containers work with NUMA resource", "[one_
     REQUIRE(text[0] == 'x');
 }
 
-// Проверяет, что блок можно освободить из другого потока через header-based arena routing.
+// Verifies that a block can be freed from another thread via header-based arena routing.
 TEST_CASE("one-node integration: cross-thread free returns memory to owner arena", "[one_node][integration][thread]") {
     NumaMemoryResource resource;
 
@@ -57,7 +57,7 @@ TEST_CASE("one-node integration: cross-thread free returns memory to owner arena
     numa_test::allocate_touch_free(resource, 256);
 }
 
-// Проверяет базовую потокобезопасность при конкурентных allocation/write/free циклах.
+// Verifies basic thread safety under concurrent allocation/write/free cycles.
 TEST_CASE("one-node integration: concurrent allocation cycles stay valid", "[one_node][integration][thread]") {
     NumaMemoryResource resource;
     std::atomic<bool> failed{false};
@@ -87,7 +87,7 @@ TEST_CASE("one-node integration: concurrent allocation cycles stay valid", "[one
     REQUIRE_FALSE(failed.load());
 }
 
-// Проверяет публичные manager invariants для one-node режима и ошибку на invalid node id.
+// Verifies public manager invariants for one-node mode and error on invalid node id.
 TEST_CASE("one-node integration: manager exposes valid arena routing", "[one_node][integration][manager]") {
     auto& manager = NumaManager::instance();
 
