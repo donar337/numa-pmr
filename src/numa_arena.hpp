@@ -10,6 +10,9 @@
 #include <stdexcept>
 #include <sched.h>
 
+class NumaArena;
+class NumaManager;
+
 class ThreadLocalSmallCache {
 public:
     ~ThreadLocalSmallCache() noexcept;
@@ -51,7 +54,7 @@ public:
         return true;
     }
 
-    void flush() noexcept;
+    void flush(NumaArena* const* arenas, size_t arena_count) noexcept;
 
 private:
     struct CacheBin {
@@ -63,10 +66,9 @@ private:
     std::array<CacheBin, kNumSizeClasses> bins_;
 };
 
-// ============================================================
-// NUMA ARENA
-// ============================================================
-
+/**
+ * Per-NUMA-node allocation façade, holds SmallObjectAllocator and LargeObjectAllocator for a NUMA node.
+ */
 class NumaArena {
 public:
     explicit NumaArena(int node_id)
@@ -75,7 +77,9 @@ public:
           large_(node_id)
     {}
 
-    void* allocate(size_t size, size_t alignment) {
+    void* allocate(size_t size, size_t alignment);
+
+    void* allocate(size_t size, size_t alignment, ThreadLocalSmallCache& cache) {
         if (size == 0) {
             size = 1;
         }
@@ -83,7 +87,7 @@ public:
         if (size <= SMALL_LARGE_THRESHOLD && alignment <= ALIGNMENT) {
             size_t class_index = SizeClassTable::class_index_for_size(size);
             size_t class_size = kClassSizes[class_index];
-            auto* header = thread_cache().pop(class_index, node_id_);
+            auto* header = cache.pop(class_index, node_id_);
 
             if (!header) {
                 header = reinterpret_cast<BlockHeader*>(
@@ -101,7 +105,16 @@ public:
         return large_.allocate(size, alignment);
     }
 
-    void deallocate(void* ptr, size_t /*size*/, size_t /*alignment*/) {
+    /**
+     * Returns memory to caches or downstream allocators on the arena that owns the block:
+     * BlockHeader.node_id must equal node_id().
+     * Small blocks may be retained on the calling thread's ThreadLocalSmallCache if within byte limits,
+     * otherwise slabs reclaim them; large blocks delegate to LargeObjectAllocator.
+     * @throws std::invalid_argument if @param ptr is not stamped with this arena's node_id.
+     */
+    void deallocate(void* ptr);
+
+    void deallocate(void* ptr, ThreadLocalSmallCache& cache) {
         if (!ptr) return;
 
         auto* header = BlockHeader::from_user_ptr(ptr);
@@ -111,8 +124,8 @@ public:
         }
 
         if (header->size_class != 0) {
-            size_t class_index = SizeClassTable::class_index(header->size_class);
-            if (thread_cache().push(header, class_index)) {
+            size_t class_index = SizeClassTable::class_index_for_size(header->size_class);
+            if (cache.push(header, class_index)) {
                 return;
             }
 
@@ -129,11 +142,12 @@ public:
 private:
     friend class ThreadLocalSmallCache;
 
-    static ThreadLocalSmallCache& thread_cache() {
-        static thread_local ThreadLocalSmallCache cache;
-        return cache;
-    }
-
+    /**
+     * Drops a cached small-block header straight into SmallObjectAllocator, bypassing the thread freelist.
+     * Used during ThreadLocalSmallCache teardown when flushing to the allocating node.
+     *
+     * @throws std::invalid_argument if header->node_id does not match node_id().
+     */
     void deallocate_cached_small(BlockHeader* header) {
         if (static_cast<int>(header->node_id) != node_id_) {
             throw std::invalid_argument("cached block routed to non-owner NUMA arena");
@@ -154,9 +168,43 @@ struct NumaArenaDeleter {
 using NumaArenaPtr = std::unique_ptr<NumaArena, NumaArenaDeleter>;
 
 
-// ============================================================
-// NUMA MANAGER
-// ============================================================
+class ThreadNumaContext {
+public:
+    static ThreadNumaContext& current();
+
+    explicit ThreadNumaContext(NumaManager& manager);
+    ~ThreadNumaContext() noexcept;
+
+    ThreadNumaContext(const ThreadNumaContext&) = delete;
+    ThreadNumaContext& operator=(const ThreadNumaContext&) = delete;
+
+    NumaArena& arena() noexcept {
+        return *arena_;
+    }
+
+    ThreadLocalSmallCache& small_cache() noexcept {
+        return *small_cache_;
+    }
+
+    NumaArena& arena_for_node(int node_id) const {
+        if (node_id < 0 || node_id >= static_cast<int>(arenas_.size())) {
+            throw std::out_of_range("invalid NUMA node id");
+        }
+
+        return *arenas_[node_id];
+    }
+
+    int node_id() const noexcept {
+        return node_id_;
+    }
+
+private:
+    int node_id_;
+    NumaArena* arena_;
+    ThreadLocalSmallCache* small_cache_;
+    std::vector<NumaArena*> arenas_;
+};
+
 
 class NumaManager {
 public:
@@ -166,8 +214,7 @@ public:
     }
 
     NumaArena& arena_for_current_thread() {
-        int node = current_node();
-        return *arenas_[node];
+        return ThreadNumaContext::current().arena();
     }
 
     NumaArena& arena_for_node(int node_id) {
@@ -192,27 +239,32 @@ public:
         return node_count_;
     }
 
+    bool pin_current_thread_to_node(int node_id) const noexcept;
+
 private:
+    friend class ThreadNumaContext;
+
     NumaManager();
 
     void init_topology();
     void init_single_node_topology();
     void init_arenas();
     static NumaArenaPtr create_arena_on_node(int node_id);
+    ThreadLocalSmallCache* create_thread_cache_on_node(int node_id);
 
     int cpu_count_  = 0;
     int node_count_ = 0;
 
     std::vector<int> cpu_to_node_;
+    std::vector<std::vector<int>> node_to_cpus_;
 
     std::vector<NumaArenaPtr> arenas_;
 };
 
 inline ThreadLocalSmallCache::~ThreadLocalSmallCache() noexcept {
-    flush();
 }
 
-inline void ThreadLocalSmallCache::flush() noexcept {
+inline void ThreadLocalSmallCache::flush(NumaArena* const* arenas, size_t arena_count) noexcept {
     for (auto& bin : bins_) {
         while (bin.head) {
             BlockHeader* header = bin.head;
@@ -222,9 +274,10 @@ inline void ThreadLocalSmallCache::flush() noexcept {
             bin.bytes -= header->size_class;
 
             try {
-                NumaManager::instance()
-                    .arena_for_node(static_cast<int>(header->node_id))
-                    .deallocate_cached_small(header);
+                const auto node_id = static_cast<size_t>(header->node_id);
+                if (node_id < arena_count) {
+                    arenas[node_id]->deallocate_cached_small(header);
+                }
             } catch (...) {
             }
         }
