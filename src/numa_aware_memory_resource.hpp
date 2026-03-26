@@ -12,19 +12,19 @@
 class NumaMemoryResource : public std::pmr::memory_resource {
 protected:
     void* do_allocate(size_t bytes, size_t alignment) override {
-        return NumaManager::instance()
-            .arena_for_current_thread()
-            .allocate(bytes, alignment);
+        auto& context = ThreadNumaContext::current();
+        return context.arena().allocate(bytes, alignment, context.small_cache());
     }
 
     void do_deallocate(void* p, size_t bytes, size_t alignment) override {
         if (!p) return;
 
+        auto& context = ThreadNumaContext::current();
         auto* header = BlockHeader::from_user_ptr(p);
 
-        NumaManager::instance()
+        context
             .arena_for_node(static_cast<int>(header->node_id))
-            .deallocate(p, bytes, alignment);
+            .deallocate(p, context.small_cache());
     }
 
     bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {
