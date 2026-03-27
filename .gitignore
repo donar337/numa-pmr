@@ -39,3 +39,18 @@
 
 # debug information files
 *.dwo
+
+# build artifacts
+build*/
+
+# coverage files
+*.gcno
+*.gcda
+*.gcov
+*.lcov
+
+# test files
+*.txt
+!CMakeLists.txt
+*.log
+*.json
