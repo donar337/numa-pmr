@@ -20,7 +20,32 @@ void* NumaArena::allocate(size_t size, size_t alignment) {
 
 void NumaArena::deallocate(void* ptr) {
     auto& context = ThreadNumaContext::current();
-    deallocate(ptr, context.small_cache());
+    deallocate(ptr, &context.small_cache());
+}
+
+void NumaArena::deallocate(void* ptr, ThreadLocalSmallCache* cache) {
+    if (!ptr) return;
+
+    auto* header = BlockHeader::from_user_ptr(ptr);
+
+    if (static_cast<int>(header->node_id) != node_id_) {
+        // TODO foreign freelist
+        NumaManager::instance()
+            .arena_for_node(static_cast<int>(header->node_id))
+            .deallocate(ptr, nullptr);
+        return;
+    }
+
+    if (header->size_class != 0) {
+        size_t class_index = SizeClassTable::class_index_for_size(header->size_class);
+        if (cache && cache->push(header, class_index)) {
+            return;
+        }
+
+        small_.deallocate(header);
+    } else {
+        large_.deallocate(ptr);
+    }
 }
 
 NumaManager::NumaManager() {
@@ -146,30 +171,69 @@ ThreadLocalSmallCache* NumaManager::create_thread_cache_on_node(int node_id) {
     }
 }
 
-ThreadNumaContext::ThreadNumaContext(NumaManager& manager)
-    : node_id_(manager.current_node()),
+ThreadNumaContext::ThreadNumaContext(NumaManager& manager, int node_id)
+    : node_id_(node_id),
       arena_(nullptr),
       small_cache_(nullptr) {
-    manager.pin_current_thread_to_node(node_id_);
-
-    arenas_.reserve(manager.arenas_.size());
-    for (const auto& arena : manager.arenas_) {
-        arenas_.push_back(arena.get());
-    }
-
-    arena_ = arenas_[node_id_];
+    arena_ = &manager.arena_for_node(node_id_);
     small_cache_ = manager.create_thread_cache_on_node(node_id_);
 }
 
 ThreadNumaContext::~ThreadNumaContext() noexcept {
     if (!small_cache_) return;
 
-    small_cache_->flush(arenas_.data(), arenas_.size());
+    small_cache_->flush(*arena_);
     small_cache_->~ThreadLocalSmallCache();
     VirtualMemory::release(small_cache_, sizeof(ThreadLocalSmallCache));
 }
 
+ThreadNumaContext* ThreadNumaContext::create_on_current_node(NumaManager& manager) {
+    int node_id = manager.current_node();
+    manager.pin_current_thread_to_node(node_id);
+
+    void* mem = VirtualMemory::reserve(sizeof(ThreadNumaContext));
+
+    VirtualMemory::bind_to_node(
+        mem,
+        sizeof(ThreadNumaContext),
+        node_id,
+        VirtualMemory::NumaPolicy::Bind
+    );
+
+    try {
+        return new (mem) ThreadNumaContext(manager, node_id);
+    } catch (...) {
+        VirtualMemory::release(mem, sizeof(ThreadNumaContext));
+        throw;
+    }
+}
+
+void ThreadNumaContext::destroy(ThreadNumaContext* context) noexcept {
+    if (!context) return;
+
+    context->~ThreadNumaContext();
+    VirtualMemory::release(context, sizeof(ThreadNumaContext));
+}
+
+class ThreadNumaContextOwner {
+public:
+    ThreadNumaContextOwner()
+        : context_(ThreadNumaContext::create_on_current_node(NumaManager::instance()))
+    {}
+
+    ~ThreadNumaContextOwner() noexcept {
+        ThreadNumaContext::destroy(context_);
+    }
+
+    ThreadNumaContext& get() noexcept {
+        return *context_;
+    }
+
+private:
+    ThreadNumaContext* context_;
+};
+
 ThreadNumaContext& ThreadNumaContext::current() {
-    static thread_local ThreadNumaContext context(NumaManager::instance());
-    return context;
+    static thread_local ThreadNumaContextOwner owner;
+    return owner.get();
 }

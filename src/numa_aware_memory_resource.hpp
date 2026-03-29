@@ -20,11 +20,7 @@ protected:
         if (!p) return;
 
         auto& context = ThreadNumaContext::current();
-        auto* header = BlockHeader::from_user_ptr(p);
-
-        context
-            .arena_for_node(static_cast<int>(header->node_id))
-            .deallocate(p, context.small_cache());
+        context.arena().deallocate(p, context.small_cache());
     }
 
     bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {
