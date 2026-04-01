@@ -34,18 +34,9 @@ int main() {
         arena.deallocate(large);
     }
 
-    // Singleton-менеджер: текущая арена потока.
-    {
-        void* p =
-            mgr.arena_for_current_thread().allocate(512, alignof(std::max_align_t));
-        std::memset(p, 0xEE, 512);
-        mgr.arena_for_current_thread().deallocate(p);
-    }
-
     // std::pmr поверх NumaMemoryResource.
     {
-        static NumaMemoryResource resource;
-        std::pmr::vector<std::uint8_t> bytes(&resource);
+        std::pmr::vector<std::uint8_t> bytes(numa_memory_resource());
         bytes.resize(8192);
         bytes[0] = 1;
         bytes.back() = 2;

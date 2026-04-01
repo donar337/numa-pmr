@@ -68,7 +68,7 @@ private:
 };
 
 /**
- * Per-NUMA-node allocation façade, holds SmallObjectAllocator and LargeObjectAllocator for a NUMA node.
+ * Per-NUMA-node allocation faсade, holds SmallObjectAllocator and LargeObjectAllocator for a NUMA node.
  */
 class NumaArena {
 public:
@@ -137,6 +137,8 @@ class ThreadNumaContext {
 public:
     static ThreadNumaContext& current();
 
+    static ThreadNumaContext& current(bool do_pinning, bool use_thread_cache);
+
     ~ThreadNumaContext() noexcept;
 
     ThreadNumaContext(const ThreadNumaContext&) = delete;
@@ -158,12 +160,17 @@ private:
     friend class NumaManager;
     friend class ThreadNumaContextOwner;
 
-    ThreadNumaContext(NumaManager& manager, int node_id);
+    ThreadNumaContext(NumaManager& manager, int node_id, bool use_thread_cache);
 
-    static ThreadNumaContext* create_on_current_node(NumaManager& manager);
+    static ThreadNumaContext* create_on_current_node(
+        NumaManager& manager,
+        bool do_pinning,
+        bool use_thread_cache
+    );
     static void destroy(ThreadNumaContext* context) noexcept;
 
     int node_id_;
+    bool use_thread_cache_;
     NumaArena* arena_;
     ThreadLocalSmallCache* small_cache_;
 };
@@ -174,10 +181,6 @@ public:
     static NumaManager& instance() {
         static NumaManager inst;
         return inst;
-    }
-
-    NumaArena& arena_for_current_thread() {
-        return ThreadNumaContext::current().arena();
     }
 
     NumaArena& arena_for_node(int node_id) {

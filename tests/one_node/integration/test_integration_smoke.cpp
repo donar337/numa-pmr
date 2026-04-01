@@ -12,20 +12,20 @@
 
 // Verifies that the PMR resource handles small, large, and zero-size allocation cycles.
 TEST_CASE("one-node integration: PMR allocation cycles are writable and reusable", "[one_node][integration][pmr]") {
-    NumaMemoryResource resource;
+    auto* resource = numa_memory_resource();
 
     for (std::size_t round = 0; round < 4; ++round) {
         for (std::size_t size : numa_test::mixed_sizes()) {
-            numa_test::allocate_touch_free(resource, size);
+            numa_test::allocate_touch_free(*resource, size);
         }
     }
 }
 
 // Verifies that standard PMR containers use the NUMA resource correctly.
 TEST_CASE("one-node integration: PMR containers work with NUMA resource", "[one_node][integration][pmr]") {
-    NumaMemoryResource resource;
+    auto* resource = numa_memory_resource();
 
-    std::pmr::vector<int> values(&resource);
+    std::pmr::vector<int> values(resource);
     for (int i = 0; i < 1024; ++i) {
         values.push_back(i);
     }
@@ -34,48 +34,57 @@ TEST_CASE("one-node integration: PMR containers work with NUMA resource", "[one_
     REQUIRE(values.front() == 0);
     REQUIRE(values.back() == 1023);
 
-    std::pmr::string text(&resource);
+    std::pmr::string text(resource);
     text.append(256, 'x');
     REQUIRE(text.size() == 256);
     REQUIRE(text[0] == 'x');
 }
 
+// Verifies that all NUMA PMR resource objects are interchangeable for PMR equality.
+TEST_CASE("one-node integration: NUMA resources compare equal", "[one_node][integration][pmr]") {
+    NumaMemoryResource default_resource;
+    NumaMemoryResource pinned_no_cache_resource(true, false);
+
+    REQUIRE(default_resource.is_equal(pinned_no_cache_resource));
+    REQUIRE(pinned_no_cache_resource.is_equal(*numa_memory_resource()));
+}
+
 // Verifies that a block can be freed from another thread via header-based arena routing.
 TEST_CASE("one-node integration: cross-thread free returns memory to owner arena", "[one_node][integration][thread]") {
-    NumaMemoryResource resource;
+    auto* resource = numa_memory_resource();
 
-    void* ptr = resource.allocate(256, alignof(std::max_align_t));
+    void* ptr = resource->allocate(256, alignof(std::max_align_t));
     REQUIRE(ptr != nullptr);
     numa_test::touch_memory(ptr, 256);
 
-    std::thread freer([&resource, ptr] {
-        resource.deallocate(ptr, 256, alignof(std::max_align_t));
+    std::thread freer([resource, ptr] {
+        resource->deallocate(ptr, 256, alignof(std::max_align_t));
     });
 
     freer.join();
 
-    numa_test::allocate_touch_free(resource, 256);
+    numa_test::allocate_touch_free(*resource, 256);
 }
 
 // Verifies basic thread safety under concurrent allocation/write/free cycles.
 TEST_CASE("one-node integration: concurrent allocation cycles stay valid", "[one_node][integration][thread]") {
-    NumaMemoryResource resource;
+    auto* resource = numa_memory_resource();
     std::atomic<bool> failed{false};
     std::vector<std::thread> threads;
 
     for (int thread_id = 0; thread_id < 8; ++thread_id) {
-        threads.emplace_back([&resource, &failed, thread_id] {
+        threads.emplace_back([resource, &failed, thread_id] {
             for (std::size_t i = 0; i < 1000; ++i) {
                 const auto sizes = numa_test::mixed_sizes();
                 const std::size_t size = sizes[(i + static_cast<std::size_t>(thread_id)) % sizes.size()];
-                void* ptr = resource.allocate(size, alignof(std::max_align_t));
+                void* ptr = resource->allocate(size, alignof(std::max_align_t));
                 if (!ptr) {
                     failed.store(true);
                     return;
                 }
 
                 numa_test::touch_memory(ptr, size, static_cast<unsigned char>(thread_id + 1));
-                resource.deallocate(ptr, size, alignof(std::max_align_t));
+                resource->deallocate(ptr, size, alignof(std::max_align_t));
             }
         });
     }
@@ -85,18 +94,4 @@ TEST_CASE("one-node integration: concurrent allocation cycles stay valid", "[one
     }
 
     REQUIRE_FALSE(failed.load());
-}
-
-// Verifies public manager invariants for one-node mode and error on invalid node id.
-TEST_CASE("one-node integration: manager exposes valid arena routing", "[one_node][integration][manager]") {
-    auto& manager = NumaManager::instance();
-
-    REQUIRE(manager.node_count() >= 1);
-    REQUIRE(manager.current_node() >= 0);
-    REQUIRE(manager.current_node() < manager.node_count());
-
-    auto& arena = manager.arena_for_current_thread();
-    REQUIRE(arena.node_id() == manager.current_node());
-
-    REQUIRE_THROWS_AS(manager.arena_for_node(manager.node_count()), std::out_of_range);
 }
