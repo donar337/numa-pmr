@@ -1,6 +1,6 @@
 #pragma once
 
-#include "block.hpp"
+#include "../block.hpp"
 #include <algorithm>
 #include <array>
 #include <mutex>
