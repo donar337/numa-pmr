@@ -2,8 +2,8 @@
 
 #include "common/test_utils.hpp"
 #include "numa_arena.hpp"
-#include "size_divide/large_object_allocator.hpp"
-#include "size_divide/small_object_allocator.hpp"
+#include "size_divide/large_object/large_object_allocator.hpp"
+#include "size_divide/small_object/small_object_allocator.hpp"
 #include "virtual_memory.hpp"
 
 #include <array>
@@ -191,30 +191,30 @@ TEST_CASE("one-node unit: large allocator caches exact-size spans", "[one_node][
 TEST_CASE("one-node unit: arena selects correct allocation paths", "[one_node][unit][arena]") {
     NumaArena arena(0);
 
-    void* small = arena.allocate(128, alignof(std::max_align_t), ThreadNumaContext::current().small_cache());
+    void* small = arena.allocate(128, alignof(std::max_align_t));
     auto* small_header = BlockHeader::from_user_ptr(small);
     REQUIRE(small_header->node_id == 0);
     REQUIRE(small_header->size_class == SizeClassTable::class_size(128));
     numa_test::touch_memory(small, 128, 0x11);
-    arena.deallocate(small, ThreadNumaContext::current().small_cache());
+    arena.deallocate(small);
 
-    void* zero = arena.allocate(0, alignof(std::max_align_t), ThreadNumaContext::current().small_cache());
+    void* zero = arena.allocate(0, alignof(std::max_align_t));
     auto* zero_header = BlockHeader::from_user_ptr(zero);
     REQUIRE(zero_header->node_id == 0);
     REQUIRE(zero_header->size_class == SizeClassTable::class_size(1));
     numa_test::touch_memory(zero, 1);
-    arena.deallocate(zero, ThreadNumaContext::current().small_cache());
+    arena.deallocate(zero);
 
-    void* large = arena.allocate(SMALL_LARGE_THRESHOLD + 1, alignof(std::max_align_t), ThreadNumaContext::current().small_cache());
+    void* large = arena.allocate(SMALL_LARGE_THRESHOLD + 1, alignof(std::max_align_t));
     auto* large_header = BlockHeader::from_user_ptr(large);
     REQUIRE(large_header->node_id == 0);
     REQUIRE(large_header->size_class == 0);
     numa_test::touch_memory(large, SMALL_LARGE_THRESHOLD + 1);
-    arena.deallocate(large, ThreadNumaContext::current().small_cache());
+    arena.deallocate(large);
 
-    void* over_aligned = arena.allocate(128, 64, ThreadNumaContext::current().small_cache());
+    void* over_aligned = arena.allocate(128, 64);
     auto* aligned_header = BlockHeader::from_user_ptr(over_aligned);
     REQUIRE(numa_test::is_aligned(over_aligned, 64));
     REQUIRE(aligned_header->size_class == 0);
-    arena.deallocate(over_aligned, ThreadNumaContext::current().small_cache());
+    arena.deallocate(over_aligned);
 }

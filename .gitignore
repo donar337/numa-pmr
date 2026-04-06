@@ -54,3 +54,4 @@ build*/
 !CMakeLists.txt
 *.log
 *.json
+!bench.json

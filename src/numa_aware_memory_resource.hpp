@@ -2,7 +2,7 @@
 
 #include <cstddef>
 #include <memory_resource>
-#include "numa_arena.hpp"
+#include "thread_local/thread_local_cache.hpp"
 
 
 /**
@@ -27,15 +27,15 @@ public:
 
 protected:
     void* do_allocate(size_t bytes, size_t alignment) override {
-        auto& context = ThreadNumaContext::current(do_pinning_, use_thread_cache_);
-        return context.arena().allocate(bytes, alignment, context.small_cache());
+        auto& cache = ThreadLocalCache::current(do_pinning_, use_thread_cache_);
+        return cache.allocate(bytes, alignment);
     }
 
     void do_deallocate(void* p, size_t bytes, size_t alignment) override {
         if (!p) return;
 
-        auto& context = ThreadNumaContext::current(do_pinning_, use_thread_cache_);
-        context.arena().deallocate(p, context.small_cache());
+        auto& cache = ThreadLocalCache::current(do_pinning_, use_thread_cache_);
+        cache.deallocate(p);
     }
 
     bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {

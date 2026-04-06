@@ -3,6 +3,7 @@
 #include "common/test_utils.hpp"
 #include "numa_aware_memory_resource.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <memory_resource>
@@ -18,6 +19,42 @@ TEST_CASE("one-node integration: PMR allocation cycles are writable and reusable
         for (std::size_t size : numa_test::mixed_sizes()) {
             numa_test::allocate_touch_free(*resource, size);
         }
+    }
+}
+
+TEST_CASE("one-node integration: PMR works with thread cache disabled", "[one_node][integration][pmr]") {
+    NumaMemoryResource resource(false, false);
+
+    for (std::size_t size : numa_test::mixed_sizes()) {
+        numa_test::allocate_touch_free(resource, size);
+    }
+}
+
+TEST_CASE("one-node integration: PMR batch reuses thread cache", "[one_node][integration][pmr]") {
+    NumaMemoryResource resource;
+    constexpr std::size_t size = 1024;
+    constexpr std::size_t batch_size = 128;
+    std::vector<void*> first(batch_size);
+    std::vector<void*> second(batch_size);
+
+    for (void*& ptr : first) {
+        ptr = resource.allocate(size, alignof(std::max_align_t));
+    }
+
+    for (void* ptr : first) {
+        resource.deallocate(ptr, size, alignof(std::max_align_t));
+    }
+
+    for (void*& ptr : second) {
+        ptr = resource.allocate(size, alignof(std::max_align_t));
+    }
+
+    for (void* ptr : second) {
+        REQUIRE(std::find(first.begin(), first.end(), ptr) != first.end());
+    }
+
+    for (void* ptr : second) {
+        resource.deallocate(ptr, size, alignof(std::max_align_t));
     }
 }
 

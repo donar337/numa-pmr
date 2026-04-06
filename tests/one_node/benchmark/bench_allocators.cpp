@@ -50,8 +50,9 @@ void batch_loop(
 ) {
     for (auto _ : state) {
         for (void*& ptr : ptrs) {
-            ptr = mr->allocate(size, alignof(std::max_align_t));
-            benchmark::DoNotOptimize(ptr);
+            void* allocated = mr->allocate(size, alignof(std::max_align_t));
+            benchmark::DoNotOptimize(allocated);
+            ptr = allocated;
         }
 
         for (void* ptr : ptrs) {
