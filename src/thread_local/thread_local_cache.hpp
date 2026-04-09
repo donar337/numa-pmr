@@ -1,6 +1,6 @@
 #pragma once
 
-#include "numa_arena.hpp"
+#include "numa_arena/numa_arena.hpp"
 
 #include <array>
 #include <cstddef>

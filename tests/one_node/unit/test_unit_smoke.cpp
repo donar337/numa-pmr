@@ -1,10 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "common/test_utils.hpp"
-#include "numa_arena.hpp"
+#include "numa_arena/numa_arena.hpp"
 #include "size_divide/large_object/large_object_allocator.hpp"
 #include "size_divide/small_object/small_object_allocator.hpp"
-#include "virtual_memory.hpp"
+#include "virtual_memory/virtual_memory.hpp"
 
 #include <array>
 #include <cstddef>

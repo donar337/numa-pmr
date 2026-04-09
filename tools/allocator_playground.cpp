@@ -4,7 +4,8 @@
 // cmake --build ./build --target numa_allocator_playground
 // ./build/numa_allocator_playground
 
-#include "numa_arena.hpp"
+#include "numa_arena/numa_arena.hpp"
+#include "numa_manager/numa_manager.hpp"
 #include "numa_aware_memory_resource.hpp"
 
 #include <cstdint>

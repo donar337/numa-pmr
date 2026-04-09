@@ -1,6 +1,7 @@
 #include "thread_local/thread_local_cache.hpp"
 
-#include "virtual_memory.hpp"
+#include "numa_manager/numa_manager.hpp"
+#include "virtual_memory/virtual_memory.hpp"
 
 #include <new>
 
