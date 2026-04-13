@@ -10,6 +10,17 @@
 #include <cstddef>
 #include <vector>
 
+namespace {
+
+std::size_t expected_large_span_size(std::size_t user_size, std::size_t alignment) {
+    const std::size_t required = user_size + alignment + sizeof(BlockHeader);
+    const std::size_t page_size = VirtualMemory::align_up(required, VirtualMemory::page_size());
+    const std::size_t class_size = LargeObjectConfig::class_size_for(page_size);
+    return VirtualMemory::align_up(class_size, VirtualMemory::page_size());
+}
+
+} // namespace
+
 // Verifies boundary values and monotonicity of the small size class table.
 TEST_CASE("one-node unit: size classes are rounded consistently", "[one_node][unit][size_class]") {
     REQUIRE(SizeClassTable::class_size(1) == 16);
@@ -147,14 +158,13 @@ TEST_CASE("one-node unit: large allocator honors alignment and metadata", "[one_
     }
 }
 
-// Verifies that the large allocator caches page-aligned exact spans and reuses them only when
-// the rounded span size matches (same requested size and alignment).
-TEST_CASE("one-node unit: large allocator caches exact-size spans", "[one_node][unit][large]") {
+// Verifies that nearby large sizes share a configured span class and reuse cached memory.
+TEST_CASE("one-node unit: large allocator reuses class-size spans", "[one_node][unit][large]") {
     constexpr std::size_t alignment = alignof(std::max_align_t);
     constexpr std::size_t user_size = 8192;
-    const std::size_t required_inner = user_size + alignment + sizeof(BlockHeader);
-    const std::size_t expected_span =
-        VirtualMemory::align_up(required_inner, VirtualMemory::page_size());
+    constexpr std::size_t nearby_user_size = 9000;
+    const std::size_t expected_span = expected_large_span_size(user_size, alignment);
+    REQUIRE(expected_span == expected_large_span_size(nearby_user_size, alignment));
 
     LargeObjectAllocator allocator(0, 4, 1024 * 1024);
 
@@ -166,25 +176,40 @@ TEST_CASE("one-node unit: large allocator caches exact-size spans", "[one_node][
 
     allocator.deallocate(first);
 
-    void* second = allocator.allocate(user_size, alignment);
+    void* second = allocator.allocate(nearby_user_size, alignment);
     auto* second_header = BlockHeader::from_user_ptr(second);
     REQUIRE(second_header->raw_ptr == first_raw);
     REQUIRE(second_header->total_size == expected_span);
+    REQUIRE(second_header->size == nearby_user_size);
 
     allocator.deallocate(second);
+}
 
+// Verifies that an empty exact bin can reuse a cached span from a bounded larger bin.
+TEST_CASE("one-node unit: large allocator reuses nearest larger cached span", "[one_node][unit][large]") {
+    constexpr std::size_t alignment = alignof(std::max_align_t);
+    constexpr std::size_t small_user_size = 8192;
     constexpr std::size_t larger_user_size = 16384;
-    const std::size_t larger_expected_span = VirtualMemory::align_up(
-        larger_user_size + alignment + sizeof(BlockHeader),
-        VirtualMemory::page_size());
-    REQUIRE(larger_expected_span != expected_span);
+    const std::size_t small_expected_span = expected_large_span_size(small_user_size, alignment);
+    const std::size_t larger_expected_span = expected_large_span_size(larger_user_size, alignment);
+    REQUIRE(larger_expected_span > small_expected_span);
 
-    void* third = allocator.allocate(larger_user_size, alignment);
-    auto* third_header = BlockHeader::from_user_ptr(third);
-    REQUIRE(third_header->raw_ptr != first_raw);
-    REQUIRE(third_header->total_size == larger_expected_span);
+    LargeObjectAllocator allocator(0, 4, 1024 * 1024);
 
-    allocator.deallocate(third);
+    void* larger = allocator.allocate(larger_user_size, alignment);
+    auto* larger_header = BlockHeader::from_user_ptr(larger);
+    REQUIRE(larger_header->total_size == larger_expected_span);
+    void* larger_raw = larger_header->raw_ptr;
+
+    allocator.deallocate(larger);
+
+    void* smaller = allocator.allocate(small_user_size, alignment);
+    auto* smaller_header = BlockHeader::from_user_ptr(smaller);
+    REQUIRE(smaller_header->raw_ptr == larger_raw);
+    REQUIRE(smaller_header->total_size == larger_expected_span);
+    REQUIRE(smaller_header->size == small_user_size);
+
+    allocator.deallocate(smaller);
 }
 
 // Verifies that the arena correctly routes small, large, zero-size, and over-aligned requests.
