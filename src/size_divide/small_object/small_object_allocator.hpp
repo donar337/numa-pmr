@@ -112,6 +112,8 @@ public:
      * slab via Slab::create on node_id_.
      */
     void* allocate();
+    void* allocate_existing();
+    void* allocate_new_slab();
 
     /**
      * @param ptr  Block pointer previously returned by allocate() for this size class.
@@ -121,8 +123,11 @@ public:
      * removes this slab, otherwise may retain the slab as current_.
      */
     void deallocate(void* ptr);
+    void deallocate_batch(BlockHeader* head);
 
 private:
+    void release_extra_empty_slabs_locked();
+
     size_t block_size_;
     int    node_id_;
     Slab*  current_;
@@ -238,6 +243,8 @@ static constexpr std::array<size_t, kNumSizeClasses> kClassSizes = []() constexp
  */
 class SmallObjectAllocator {
 public:
+    using SlowPathDrain = void (*)(void* context, size_t class_index);
+
     explicit SmallObjectAllocator(int node_id)
         : SmallObjectAllocator(node_id, std::make_index_sequence<kNumSizeClasses>{})
     {}
@@ -254,7 +261,13 @@ public:
 
     void* allocate(size_t size);
     void* allocate_by_class_index(size_t class_index);
+    void* allocate_by_class_index(
+        size_t class_index,
+        SlowPathDrain drain,
+        void* drain_context
+    );
     void deallocate(void* block);
+    void deallocate_batch(size_t class_index, BlockHeader* head);
 
 private:
     SizeClass& get_size_class(size_t size);

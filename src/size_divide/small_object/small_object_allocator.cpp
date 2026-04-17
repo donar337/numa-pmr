@@ -121,6 +121,40 @@ void* SizeClass::allocate() {
     return current_->allocate_block();
 }
 
+void* SizeClass::allocate_existing() {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (current_ && current_->has_free())
+        return current_->allocate_block();
+
+    for (auto* slab : slabs_) {
+        if (slab->has_free()) {
+            current_ = slab;
+            return current_->allocate_block();
+        }
+    }
+
+    return nullptr;
+}
+
+void* SizeClass::allocate_new_slab() {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (current_ && current_->has_free())
+        return current_->allocate_block();
+
+    for (auto* slab : slabs_) {
+        if (slab->has_free()) {
+            current_ = slab;
+            return current_->allocate_block();
+        }
+    }
+
+    current_ = Slab::create(block_size_, node_id_);
+    slabs_.push_back(current_);
+    return current_->allocate_block();
+}
+
 void SizeClass::deallocate(void* ptr) {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -133,33 +167,70 @@ void SizeClass::deallocate(void* ptr) {
 
     slab->free_block(ptr);
 
-    auto* header = reinterpret_cast<Slab::SlabHeader*>(slab);
+    if (slab->is_empty()) {
+        release_extra_empty_slabs_locked();
+    }
+}
 
-    if (header->free_count == header->capacity) {
-        bool has_retained_empty_slab = false;
-        for (auto* existing : slabs_) {
-            if (existing != slab && existing->is_empty()) {
-                has_retained_empty_slab = true;
-                break;
-            }
+void SizeClass::deallocate_batch(BlockHeader* head) {
+    if (!head) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    bool saw_empty_slab = false;
+    while (head) {
+        auto** next = reinterpret_cast<BlockHeader**>(head->to_user_ptr());
+        BlockHeader* current = head;
+        head = *next;
+
+        auto* slab = static_cast<Slab*>(current->raw_ptr);
+        if (!slab) {
+            throw std::invalid_argument("small allocation has no owning slab");
         }
 
-        if (!has_retained_empty_slab) {
-            current_ = slab;
-            return;
+        slab->free_block(current);
+        saw_empty_slab = saw_empty_slab || slab->is_empty();
+    }
+
+    if (saw_empty_slab) {
+        release_extra_empty_slabs_locked();
+    }
+}
+
+void SizeClass::release_extra_empty_slabs_locked() {
+    Slab* retained_empty_slab = nullptr;
+
+    for (size_t i = 0; i < slabs_.size();) {
+        Slab* slab = slabs_[i];
+        if (!slab->is_empty()) {
+            ++i;
+            continue;
+        }
+
+        if (!retained_empty_slab) {
+            retained_empty_slab = slab;
+            ++i;
+            continue;
         }
 
         if (current_ == slab) {
             current_ = nullptr;
         }
 
-        auto it = std::find(slabs_.begin(), slabs_.end(), slab);
-        if (it != slabs_.end()) {
-            std::swap(*it, slabs_.back());
-            slabs_.pop_back();
-        }
-
+        std::swap(slabs_[i], slabs_.back());
+        slabs_.pop_back();
         VirtualMemory::release(slab, SLAB_SIZE);
+    }
+
+    if (current_ &&
+        std::find(slabs_.begin(), slabs_.end(), current_) == slabs_.end()) {
+        current_ = nullptr;
+    }
+
+    if ((!current_ || !current_->has_free()) && retained_empty_slab) {
+        current_ = retained_empty_slab;
     }
 }
 
@@ -179,12 +250,45 @@ void* SmallObjectAllocator::allocate_by_class_index(size_t class_index) {
     return classes_[class_index].allocate();
 }
 
+void* SmallObjectAllocator::allocate_by_class_index(
+    size_t class_index,
+    SlowPathDrain drain,
+    void* drain_context
+) {
+    if (class_index >= kNumSizeClasses) {
+        throw std::out_of_range("invalid small allocation size class");
+    }
+
+    auto& sc = classes_[class_index];
+    if (void* block = sc.allocate_existing()) {
+        return block;
+    }
+
+    if (drain) {
+        drain(drain_context, class_index);
+    }
+
+    if (void* block = sc.allocate_existing()) {
+        return block;
+    }
+
+    return sc.allocate_new_slab();
+}
+
 void SmallObjectAllocator::deallocate(void* block) {
     auto* header = reinterpret_cast<BlockHeader*>(block);
     size_t cls_size = header->size_class;
 
     auto& sc = get_size_class(cls_size);
     sc.deallocate(block);
+}
+
+void SmallObjectAllocator::deallocate_batch(size_t class_index, BlockHeader* head) {
+    if (class_index >= kNumSizeClasses) {
+        throw std::out_of_range("invalid small allocation size class");
+    }
+
+    classes_[class_index].deallocate_batch(head);
 }
 
 SizeClass& SmallObjectAllocator::get_size_class(size_t size) {

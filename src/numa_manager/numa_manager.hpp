@@ -44,7 +44,7 @@ private:
     void init_topology();
     void init_single_node_topology();
     void init_arenas();
-    static NumaArenaPtr create_arena_on_node(int node_id);
+    static NumaArenaPtr create_arena_on_node(int node_id, bool foreign_freelist_enabled);
 
     int cpu_count_  = 0;
     int node_count_ = 0;

@@ -62,11 +62,11 @@ void NumaManager::init_arenas() {
     arenas_.reserve(node_count_);
 
     for (int i = 0; i < node_count_; ++i) {
-        arenas_.emplace_back(create_arena_on_node(i));
+        arenas_.emplace_back(create_arena_on_node(i, node_count_ > 1));
     }
 }
 
-NumaArenaPtr NumaManager::create_arena_on_node(int node_id) {
+NumaArenaPtr NumaManager::create_arena_on_node(int node_id, bool foreign_freelist_enabled) {
     void* mem = VirtualMemory::reserve(sizeof(NumaArena));
 
     VirtualMemory::bind_to_node(
@@ -77,7 +77,7 @@ NumaArenaPtr NumaManager::create_arena_on_node(int node_id) {
     );
 
     try {
-        return NumaArenaPtr(new (mem) NumaArena(node_id));
+        return NumaArenaPtr(new (mem) NumaArena(node_id, foreign_freelist_enabled));
     } catch (...) {
         VirtualMemory::release(mem, sizeof(NumaArena));
         throw;
