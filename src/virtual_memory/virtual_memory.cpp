@@ -3,6 +3,7 @@
 #include <new>
 
 #include <sys/mman.h>
+#include <numa.h>
 #include <numaif.h>
 
 void* VirtualMemory::reserve(size_t size) {
@@ -20,6 +21,17 @@ void* VirtualMemory::reserve(size_t size) {
                      0);
 
     if (ptr == MAP_FAILED) {
+        throw std::bad_alloc();
+    }
+
+    return ptr;
+}
+
+void* VirtualMemory::alloc_on_node(size_t size, int node, NumaPolicy policy) {
+    void* ptr = reserve(size);
+
+    if (!bind_to_node(ptr, size, node, policy)) {
+        release(ptr, size);
         throw std::bad_alloc();
     }
 
@@ -44,6 +56,10 @@ bool VirtualMemory::bind_to_node(void* ptr,
 
     if (!ptr) {
         return false;
+    }
+
+    if (!numa_is_available()) {
+        return node == 0;
     }
 
     size = align_up(size, page_size());
@@ -89,6 +105,11 @@ void VirtualMemory::advise_release(void* ptr, size_t size) {
 
     size = align_up(size, page_size());
     madvise(ptr, size, MADV_DONTNEED);
+}
+
+bool VirtualMemory::numa_is_available() noexcept {
+    static const bool available = numa_available() >= 0;
+    return available;
 }
 
 unsigned long VirtualMemory::max_nodes() {

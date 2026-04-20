@@ -22,6 +22,12 @@ public:
     // std::bad_alloc if mmap fails.
     static void* reserve(size_t size);
 
+    // Maps memory and applies a NUMA policy to it. If binding fails, releases
+    // the mapping and throws std::bad_alloc.
+    static void* alloc_on_node(size_t size,
+                               int node,
+                               NumaPolicy policy = NumaPolicy::Bind);
+
     // Unmaps [ptr, ptr + align_up(size, page_size())). No-op if `ptr` is null
     // or `size == 0`. Pass a covering length of the original `reserve`.
     static void release(void* ptr, size_t size);
@@ -68,5 +74,6 @@ public:
     }
 
 private:
+    static bool numa_is_available() noexcept;
     static unsigned long max_nodes();
 };

@@ -67,13 +67,8 @@ protected:
             bytes + alignment + sizeof(AllocationHeader),
             VirtualMemory::page_size()
         );
-        void* raw = VirtualMemory::reserve(total_size);
         const int node = exact_calculate_ ? current_node_from_cpu() : node_id_;
-
-        if (!VirtualMemory::bind_to_node(raw, total_size, node, VirtualMemory::NumaPolicy::Bind)) {
-            VirtualMemory::release(raw, total_size);
-            throw std::bad_alloc();
-        }
+        void* raw = VirtualMemory::alloc_on_node(total_size, node);
 
         return allocate_from_span(raw, total_size, bytes, alignment);
     }

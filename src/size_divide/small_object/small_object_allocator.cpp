@@ -5,14 +5,7 @@
 // ============================================================
 
 Slab* Slab::create(size_t block_size, int node_id) {
-    void* mem = VirtualMemory::reserve(SLAB_SIZE);
-
-    VirtualMemory::bind_to_node(
-        mem,
-        SLAB_SIZE,
-        node_id,
-        VirtualMemory::NumaPolicy::Bind
-    );
+    void* mem = VirtualMemory::alloc_on_node(SLAB_SIZE, node_id);
 
     auto* slab = reinterpret_cast<Slab*>(mem);
     slab->init(block_size, node_id);

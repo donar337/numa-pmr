@@ -59,14 +59,7 @@ public:
         }
 
         size_t bytes = n * sizeof(T); // NOLINT(bugprone-sizeof-expression)
-        void* mem = VirtualMemory::reserve(bytes);
-
-        VirtualMemory::bind_to_node(
-            mem,
-            bytes,
-            node_id_,
-            VirtualMemory::NumaPolicy::Bind
-        );
+        void* mem = VirtualMemory::alloc_on_node(bytes, node_id_);
 
         return static_cast<T*>(mem);
     }

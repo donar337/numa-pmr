@@ -156,14 +156,7 @@ private:
             }
         }
 
-        void* raw = VirtualMemory::reserve(size);
-
-        VirtualMemory::bind_to_node(
-            raw,
-            size,
-            node_id_,
-            VirtualMemory::NumaPolicy::Bind
-        );
+        void* raw = VirtualMemory::alloc_on_node(size, node_id_);
 
         return {raw, size};
     }

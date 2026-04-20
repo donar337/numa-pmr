@@ -31,14 +31,7 @@ ThreadLocalCache* ThreadLocalCache::create_on_current_node(
         manager.pin_current_thread_to_node(node_id);
     }
 
-    void* mem = VirtualMemory::reserve(sizeof(ThreadLocalCache));
-
-    VirtualMemory::bind_to_node(
-        mem,
-        sizeof(ThreadLocalCache),
-        node_id,
-        VirtualMemory::NumaPolicy::Bind
-    );
+    void* mem = VirtualMemory::alloc_on_node(sizeof(ThreadLocalCache), node_id);
 
     try {
         return new (mem) ThreadLocalCache(
