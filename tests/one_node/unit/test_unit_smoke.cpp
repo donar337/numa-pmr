@@ -136,6 +136,25 @@ TEST_CASE("one-node unit: small allocator reuses retained empty slab", "[one_nod
     allocator.deallocate(second);
 }
 
+TEST_CASE("one-node unit: small allocator supports no-sync and scoped destruction", "[one_node][unit][small][no_sync]") {
+    for (int round = 0; round < 4; ++round) {
+        SmallObjectAllocator allocator(0, false);
+
+        for (std::size_t size : numa_test::small_sizes()) {
+            void* block = allocator.allocate(size);
+            REQUIRE(block != nullptr);
+
+            auto* header = static_cast<BlockHeader*>(block);
+            header->node_id = 0;
+            header->size_class = static_cast<std::uint32_t>(SizeClassTable::class_size(size == 0 ? 1 : size));
+            header->size = 0;
+
+            numa_test::touch_memory(header->to_user_ptr(), size);
+            allocator.deallocate(block);
+        }
+    }
+}
+
 // Verifies large allocator: alignment, header invariants, and correct deallocation.
 TEST_CASE("one-node unit: large allocator honors alignment and metadata", "[one_node][unit][large]") {
     LargeObjectAllocator allocator(0);
@@ -212,6 +231,24 @@ TEST_CASE("one-node unit: large allocator reuses nearest larger cached span", "[
     allocator.deallocate(smaller);
 }
 
+TEST_CASE("one-node unit: large allocator supports no-sync span reuse", "[one_node][unit][large][no_sync]") {
+    constexpr std::size_t alignment = alignof(std::max_align_t);
+    constexpr std::size_t user_size = 8192;
+    LargeObjectAllocator allocator(0, 4, 1024 * 1024, false);
+
+    void* first = allocator.allocate(user_size, alignment);
+    auto* first_header = BlockHeader::from_user_ptr(first);
+    void* first_raw = first_header->raw_ptr;
+
+    allocator.deallocate(first);
+
+    void* second = allocator.allocate(user_size, alignment);
+    auto* second_header = BlockHeader::from_user_ptr(second);
+    REQUIRE(second_header->raw_ptr == first_raw);
+
+    allocator.deallocate(second);
+}
+
 // Verifies that the arena correctly routes small, large, zero-size, and over-aligned requests.
 TEST_CASE("one-node unit: arena selects correct allocation paths", "[one_node][unit][arena]") {
     NumaArena arena(0);
@@ -242,4 +279,20 @@ TEST_CASE("one-node unit: arena selects correct allocation paths", "[one_node][u
     REQUIRE(numa_test::is_aligned(over_aligned, 64));
     REQUIRE(aligned_header->size_class == 0);
     arena.deallocate(over_aligned);
+}
+
+TEST_CASE("one-node unit: arena supports standalone no-sync policy", "[one_node][unit][arena][no_sync]") {
+    NumaArena arena(
+        0,
+        false,
+        false,
+        false
+    );
+
+    for (std::size_t size : numa_test::mixed_sizes()) {
+        void* ptr = arena.allocate(size, alignof(std::max_align_t));
+        REQUIRE(ptr != nullptr);
+        numa_test::touch_memory(ptr, size);
+        arena.deallocate(ptr);
+    }
 }

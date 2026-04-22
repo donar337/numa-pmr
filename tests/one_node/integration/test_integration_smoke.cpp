@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "arena_memory_resource.hpp"
 #include "common/test_utils.hpp"
 #include "numa_aware_memory_resource.hpp"
 
@@ -77,6 +78,47 @@ TEST_CASE("one-node integration: PMR containers work with NUMA resource", "[one_
     REQUIRE(text[0] == 'x');
 }
 
+TEST_CASE("one-node integration: ArenaMemoryResource handles allocation cycles", "[one_node][integration][arena_pmr]") {
+    ArenaMemoryResource resource;
+
+    for (std::size_t size : numa_test::mixed_sizes()) {
+        numa_test::allocate_touch_free(resource, size);
+    }
+
+    void* over_aligned = resource.allocate(128, 64);
+    REQUIRE(numa_test::is_aligned(over_aligned, 64));
+    numa_test::touch_memory(over_aligned, 128);
+    resource.deallocate(over_aligned, 128, 64);
+}
+
+TEST_CASE("one-node integration: ArenaMemoryResource works with PMR containers", "[one_node][integration][arena_pmr]") {
+    ArenaMemoryResource resource;
+
+    std::pmr::vector<int> values(&resource);
+    for (int i = 0; i < 1024; ++i) {
+        values.push_back(i);
+    }
+
+    REQUIRE(values.size() == 1024);
+    REQUIRE(values.front() == 0);
+    REQUIRE(values.back() == 1023);
+
+    std::pmr::string text(&resource);
+    text.append(256, 'x');
+    REQUIRE(text.size() == 256);
+    REQUIRE(text[0] == 'x');
+}
+
+TEST_CASE("one-node integration: ArenaMemoryResource no-sync works in one thread", "[one_node][integration][arena_pmr]") {
+    ArenaMemoryResource resource(false);
+
+    for (std::size_t round = 0; round < 4; ++round) {
+        for (std::size_t size : numa_test::mixed_sizes()) {
+            numa_test::allocate_touch_free(resource, size);
+        }
+    }
+}
+
 // Verifies that all NUMA PMR resource objects are interchangeable for PMR equality.
 TEST_CASE("one-node integration: NUMA resources compare equal", "[one_node][integration][pmr]") {
     NumaMemoryResource default_resource;
@@ -84,6 +126,17 @@ TEST_CASE("one-node integration: NUMA resources compare equal", "[one_node][inte
 
     REQUIRE(default_resource.is_equal(pinned_no_cache_resource));
     REQUIRE(pinned_no_cache_resource.is_equal(*numa_memory_resource()));
+}
+
+TEST_CASE("one-node integration: ArenaMemoryResource compares by identity", "[one_node][integration][arena_pmr]") {
+    ArenaMemoryResource first;
+    ArenaMemoryResource second;
+    NumaMemoryResource numa_resource;
+
+    REQUIRE(first.is_equal(first));
+    REQUIRE_FALSE(first.is_equal(second));
+    REQUIRE_FALSE(first.is_equal(numa_resource));
+    REQUIRE_FALSE(numa_resource.is_equal(first));
 }
 
 // Verifies that a block can be freed from another thread via header-based arena routing.
@@ -122,6 +175,35 @@ TEST_CASE("one-node integration: concurrent allocation cycles stay valid", "[one
 
                 numa_test::touch_memory(ptr, size, static_cast<unsigned char>(thread_id + 1));
                 resource->deallocate(ptr, size, alignof(std::max_align_t));
+            }
+        });
+    }
+
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    REQUIRE_FALSE(failed.load());
+}
+
+TEST_CASE("one-node integration: ArenaMemoryResource sync mode supports concurrent cycles", "[one_node][integration][arena_pmr][thread]") {
+    ArenaMemoryResource resource(true);
+    std::atomic<bool> failed{false};
+    std::vector<std::thread> threads;
+
+    for (int thread_id = 0; thread_id < 8; ++thread_id) {
+        threads.emplace_back([&resource, &failed, thread_id] {
+            for (std::size_t i = 0; i < 1000; ++i) {
+                const auto sizes = numa_test::mixed_sizes();
+                const std::size_t size = sizes[(i + static_cast<std::size_t>(thread_id)) % sizes.size()];
+                void* ptr = resource.allocate(size, alignof(std::max_align_t));
+                if (!ptr) {
+                    failed.store(true);
+                    return;
+                }
+
+                numa_test::touch_memory(ptr, size, static_cast<unsigned char>(thread_id + 1));
+                resource.deallocate(ptr, size, alignof(std::max_align_t));
             }
         });
     }

@@ -14,8 +14,10 @@ public:
     explicit LargeObjectAllocator(
         int node_id,
         size_t max_cached_spans = LargeObjectConfig::kMaxLargeCachedSpans,
-        size_t max_cached_bytes = LargeObjectConfig::kMaxLargeCacheBytes)
+        size_t max_cached_bytes = LargeObjectConfig::kMaxLargeCacheBytes,
+        bool sync = true)
         : node_id_(node_id),
+          sync_(sync),
           max_cached_spans_(max_cached_spans),
           max_cached_bytes_(max_cached_bytes) {}
 
@@ -133,7 +135,7 @@ private:
      */
     CachedSpan acquire_span(size_t size) {
         {
-            std::lock_guard<std::mutex> lock(cache_mutex_);
+            OptionalMutexLock lock(cache_mutex_, sync_);
 
             const size_t bin_index = LargeObjectConfig::bin_index_for(size);
             if (bin_index != LargeObjectConfig::npos) {
@@ -170,7 +172,7 @@ private:
      * @return True if the span was cached, false if it was not.
      */
     bool release_to_cache(void* raw, size_t total_size) {
-        std::lock_guard<std::mutex> lock(cache_mutex_);
+        OptionalMutexLock lock(cache_mutex_, sync_);
 
         const size_t bin_index = LargeObjectConfig::bin_index_for(total_size);
         if (bin_index == LargeObjectConfig::npos) {
@@ -192,6 +194,7 @@ private:
     }
 
     int node_id_;
+    bool sync_;
     size_t max_cached_spans_;
     size_t max_cached_bytes_;
     mutable std::mutex cache_mutex_;

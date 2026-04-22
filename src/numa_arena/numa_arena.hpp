@@ -14,11 +14,20 @@
  */
 class NumaArena {
 public:
-    explicit NumaArena(int node_id, bool foreign_freelist_enabled = true)
+    explicit NumaArena(
+        int node_id,
+        bool foreign_freelist_enabled = true,
+        bool sync = true,
+        bool route_foreign_deallocations = true
+    )
         : node_id_(node_id),
           foreign_freelist_enabled_(foreign_freelist_enabled),
-          small_(node_id),
-          large_(node_id)
+          route_foreign_deallocations_(route_foreign_deallocations),
+          small_(node_id, sync),
+          large_(node_id,
+                 LargeObjectConfig::kMaxLargeCachedSpans,
+                 LargeObjectConfig::kMaxLargeCacheBytes,
+                 sync)
     {}
     ~NumaArena() noexcept;
 
@@ -63,6 +72,7 @@ private:
 
     int node_id_;
     bool foreign_freelist_enabled_;
+    bool route_foreign_deallocations_;
     SmallObjectAllocator small_;
     LargeObjectAllocator large_;
     std::array<ForeignBin, kNumSizeClasses> foreign_bins_;

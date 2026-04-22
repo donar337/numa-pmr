@@ -1,5 +1,6 @@
 #pragma once
 
+#include "numa_topology/numa_topology.hpp"
 #include "virtual_memory/virtual_memory.hpp"
 
 #include <cstddef>
@@ -7,9 +8,6 @@
 #include <limits>
 #include <memory_resource>
 #include <new>
-
-#include <numa.h>
-#include <sched.h>
 
 /**
  * A simple NUMA-aware PMR upstream resource.
@@ -25,7 +23,7 @@ public:
      * All later allocations use that stored node, even from other threads.
      */
     SimpleNumaMemoryResource() noexcept
-        : node_id_(current_node_from_cpu()),
+        : node_id_(numa_topology::current_node_from_cpu()),
           exact_calculate_(false)
     {}
 
@@ -34,7 +32,7 @@ public:
      * fall back to the same current-node selection as the default constructor.
      */
     explicit SimpleNumaMemoryResource(int node_id) noexcept
-        : node_id_(is_valid_node(node_id) ? node_id : current_node_from_cpu()),
+        : node_id_(numa_topology::normalize_node_id(node_id)),
           exact_calculate_(false)
     {}
 
@@ -45,7 +43,7 @@ public:
      * ! Extremely slow in normal conditions, you must well know what you are doing !
      */
     static SimpleNumaMemoryResource current_node_per_allocation() noexcept {
-        return SimpleNumaMemoryResource(current_node_from_cpu(), true);
+        return SimpleNumaMemoryResource(numa_topology::current_node_from_cpu(), true);
     }
 
 protected:
@@ -67,7 +65,7 @@ protected:
             bytes + alignment + sizeof(AllocationHeader),
             VirtualMemory::page_size()
         );
-        const int node = exact_calculate_ ? current_node_from_cpu() : node_id_;
+        const int node = exact_calculate_ ? numa_topology::current_node_from_cpu() : node_id_;
         void* raw = VirtualMemory::alloc_on_node(total_size, node);
 
         return allocate_from_span(raw, total_size, bytes, alignment);
@@ -102,37 +100,6 @@ private:
         : node_id_(node_id),
           exact_calculate_(exact_calculate)
     {}
-
-    static int current_node_from_cpu() noexcept {
-        if (numa_available() < 0) {
-            return 0;
-        }
-
-        const int cpu = sched_getcpu();
-        if (cpu < 0) {
-            return 0;
-        }
-
-        const int node = numa_node_of_cpu(cpu);
-        return node >= 0 ? node : 0;
-    }
-
-    static bool is_valid_node(int node_id) noexcept {
-        if (node_id < 0) {
-            return false;
-        }
-
-        if (numa_available() < 0) {
-            return node_id == 0;
-        }
-
-        if (node_id > numa_max_node()) {
-            return false;
-        }
-
-        return numa_all_nodes_ptr != nullptr &&
-               numa_bitmask_isbitset(numa_all_nodes_ptr, static_cast<unsigned int>(node_id)) != 0;
-    }
 
     static void* allocate_from_span(void* raw, size_t total_size, size_t bytes, size_t alignment) {
         const auto raw_addr = reinterpret_cast<std::uintptr_t>(raw);

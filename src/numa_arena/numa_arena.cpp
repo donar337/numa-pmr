@@ -56,7 +56,7 @@ void NumaArena::deallocate(void* ptr) {
 
     auto* header = BlockHeader::from_user_ptr(ptr);
 
-    if (static_cast<int>(header->node_id) != node_id_) {
+    if (static_cast<int>(header->node_id) != node_id_ && route_foreign_deallocations_) {
         NumaManager::instance()
             .arena_for_node(static_cast<int>(header->node_id))
             .deallocate_foreign(ptr, header);

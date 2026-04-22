@@ -2,6 +2,7 @@
 
 #include "virtual_memory/virtual_memory.hpp"
 #include <cassert>
+#include <mutex>
 
 // ============================================================
 // SMALL OBJECT CONFIG
@@ -120,6 +121,28 @@ inline void* sub_bytes(void* p, size_t offset) noexcept {
 }
 
 } // namespace pointer_utils
+
+class OptionalMutexLock {
+public:
+    OptionalMutexLock(std::mutex& mutex, bool should_lock)
+        : mutex_(should_lock ? &mutex : nullptr) {
+        if (mutex_) {
+            mutex_->lock();
+        }
+    }
+
+    ~OptionalMutexLock() noexcept {
+        if (mutex_) {
+            mutex_->unlock();
+        }
+    }
+
+    OptionalMutexLock(const OptionalMutexLock&) = delete;
+    OptionalMutexLock& operator=(const OptionalMutexLock&) = delete;
+
+private:
+    std::mutex* mutex_;
+};
 
 
 // ============================================================

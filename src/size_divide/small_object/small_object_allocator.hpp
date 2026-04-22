@@ -94,7 +94,13 @@ bool operator!=(const NodeLocalAllocator<T>& lhs,
  */
 class SizeClass {
 public:
-    SizeClass(size_t block_size, int node_id);
+    SizeClass(size_t block_size, int node_id, bool sync = true);
+    ~SizeClass() noexcept;
+
+    SizeClass(const SizeClass&) = delete;
+    SizeClass& operator=(const SizeClass&) = delete;
+    SizeClass(SizeClass&&) = delete;
+    SizeClass& operator=(SizeClass&&) = delete;
 
     /**
      * Returns a pointer to one block in some slab (layout: BlockHeader at ptr,
@@ -123,6 +129,7 @@ private:
 
     size_t block_size_;
     int    node_id_;
+    bool   sync_;
     Slab*  current_;
     std::vector<Slab*, NodeLocalAllocator<Slab*>> slabs_;
     std::mutex mutex_;
@@ -238,16 +245,17 @@ class SmallObjectAllocator {
 public:
     using SlowPathDrain = void (*)(void* context, size_t class_index);
 
-    explicit SmallObjectAllocator(int node_id)
-        : SmallObjectAllocator(node_id, std::make_index_sequence<kNumSizeClasses>{})
+    explicit SmallObjectAllocator(int node_id, bool sync = true)
+        : SmallObjectAllocator(node_id, sync, std::make_index_sequence<kNumSizeClasses>{})
     {}
 
 private:
     /** Implements the public constructor via a pack expansion over kClassSizes. */
     template <std::size_t... I>
-    SmallObjectAllocator(int node_id, std::index_sequence<I...>)
+    SmallObjectAllocator(int node_id, bool sync, std::index_sequence<I...>)
         : node_id_(node_id),
-          classes_{SizeClass(kClassSizes[I], node_id)...}
+          sync_(sync),
+          classes_{SizeClass(kClassSizes[I], node_id, sync)...}
     {}
 
 public:
@@ -266,5 +274,6 @@ private:
     SizeClass& get_size_class(size_t size);
 
     int node_id_;
+    bool sync_;
     std::array<SizeClass, kNumSizeClasses> classes_;
 };

@@ -90,14 +90,24 @@ Slab::SlabHeader* Slab::header_ptr() const noexcept {
 // SIZE CLASS
 // ============================================================
 
-SizeClass::SizeClass(size_t block_size, int node_id)
+SizeClass::SizeClass(size_t block_size, int node_id, bool sync)
     : block_size_(block_size),
       node_id_(node_id),
+      sync_(sync),
       current_(nullptr),
       slabs_(NodeLocalAllocator<Slab*>(node_id)) {}
 
+SizeClass::~SizeClass() noexcept {
+    for (auto* slab : slabs_) {
+        VirtualMemory::release(slab, SLAB_SIZE);
+    }
+
+    slabs_.clear();
+    current_ = nullptr;
+}
+
 void* SizeClass::allocate() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    OptionalMutexLock lock(mutex_, sync_);
 
     if (current_ && current_->has_free())
         return current_->allocate_block();
@@ -115,7 +125,7 @@ void* SizeClass::allocate() {
 }
 
 void* SizeClass::allocate_existing() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    OptionalMutexLock lock(mutex_, sync_);
 
     if (current_ && current_->has_free())
         return current_->allocate_block();
@@ -131,7 +141,7 @@ void* SizeClass::allocate_existing() {
 }
 
 void* SizeClass::allocate_new_slab() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    OptionalMutexLock lock(mutex_, sync_);
 
     if (current_ && current_->has_free())
         return current_->allocate_block();
@@ -149,7 +159,7 @@ void* SizeClass::allocate_new_slab() {
 }
 
 void SizeClass::deallocate(void* ptr) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    OptionalMutexLock lock(mutex_, sync_);
 
     auto* block_header = reinterpret_cast<BlockHeader*>(ptr);
     auto* slab = static_cast<Slab*>(block_header->raw_ptr);
@@ -170,7 +180,7 @@ void SizeClass::deallocate_batch(BlockHeader* head) {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    OptionalMutexLock lock(mutex_, sync_);
 
     bool saw_empty_slab = false;
     while (head) {
