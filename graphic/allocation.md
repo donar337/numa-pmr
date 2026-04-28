@@ -1,7 +1,7 @@
 ```mermaid
 sequenceDiagram
     participant User
-    participant PMR as NumaMemoryResource
+    participant PMR as numa_memory_resource
     participant Manager as NumaManager
     participant TLC as ThreadCache
     participant Arena as NumaArena

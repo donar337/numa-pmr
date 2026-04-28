@@ -17,32 +17,32 @@
 
 Публичный пользовательский слой сейчас состоит из трех `std::pmr::memory_resource`:
 
-- `NumaMemoryResource` - основной NUMA-aware ресурс, использующий глобальный `NumaManager`, арену для текущего NUMA node и опциональный `ThreadLocalCache`.
-- `ArenaMemoryResource` - самостоятельный PMR-ресурс, владеющий отдельной `NumaArena` на выбранном NUMA node. Он не использует `NumaManager` и `ThreadLocalCache`.
-- `SimpleNumaMemoryResource` - простой upstream-ресурс: каждое выделение напрямую мапит новый span через ОС, привязывает его к NUMA node и освобождает через `munmap`.
+- `numa_memory_resource` - основной NUMA-aware ресурс, использующий глобальный `NumaManager`, арену для текущего NUMA node и опциональный `ThreadLocalCache`.
+- `numa_arena_memory_resource` - самостоятельный PMR-ресурс, владеющий отдельной `NumaArena` на выбранном NUMA node. Он не использует `NumaManager` и `ThreadLocalCache`.
+- `numa_simple_memory_resource` - простой upstream-ресурс: каждое выделение напрямую мапит новый span через ОС, привязывает его к NUMA node и освобождает через `munmap`.
 
 Все три класса реализуют стандартный интерфейс `std::pmr::memory_resource`, поэтому их можно использовать с `std::pmr::vector`, `std::pmr::string`, `std::pmr::unordered_map`, `std::pmr::polymorphic_allocator` и собственными структурами данных.
 
-### `NumaMemoryResource`
+### `numa_memory_resource`
 
-`NumaMemoryResource` - основной ресурс библиотеки. Он предназначен для обычного использования в многопоточном приложении, где каждый поток должен получать память из арены своего NUMA node.
+`numa_memory_resource` - основной ресурс библиотеки. Он предназначен для обычного использования в многопоточном приложении, где каждый поток должен получать память из арены своего NUMA node.
 
 ```cpp
-#include "numa_aware_memory_resource.hpp"
+#include "numa_memory_resource.hpp"
 
 #include <cstdint>
 #include <memory_resource>
 #include <vector>
 
 int main() {
-    std::pmr::memory_resource* resource = numa_memory_resource();
+    std::pmr::memory_resource* resource = default_numa_memory_resource();
 
     std::pmr::vector<std::uint8_t> buffer(resource);
     buffer.resize(8192);
 }
 ```
 
-При первом обращении из потока `NumaMemoryResource` создает thread-local контекст. В этом контексте фиксируются:
+При первом обращении из потока `numa_memory_resource` создает thread-local контекст. В этом контексте фиксируются:
 
 - текущий NUMA node, вычисленный по CPU, на котором выполняется поток;
 - ссылка на `NumaArena` этого узла;
@@ -54,7 +54,7 @@ int main() {
 Конструктор:
 
 ```cpp
-NumaMemoryResource resource(
+numa_memory_resource resource(
     bool do_pinning = false,
     bool use_thread_cache = true
 );
@@ -68,18 +68,20 @@ NumaMemoryResource resource(
 Также есть helper:
 
 ```cpp
-std::pmr::memory_resource* resource = numa_memory_resource();
-std::pmr::memory_resource* pinned = numa_memory_resource(true);
-std::pmr::memory_resource* no_cache = numa_memory_resource(false, false);
+std::pmr::memory_resource* resource = default_numa_memory_resource();
+std::pmr::memory_resource* pinned = default_numa_memory_resource(true);
+std::pmr::memory_resource* no_cache = default_numa_memory_resource(false, false);
 ```
 
-`numa_memory_resource()` возвращает один из статических экземпляров `NumaMemoryResource` для комбинации `do_pinning` и `use_thread_cache`.
+`default_numa_memory_resource()` возвращает один из статических экземпляров `numa_memory_resource` для комбинации `do_pinning` и `use_thread_cache`.
 
-Важная особенность PMR equality: все объекты `NumaMemoryResource` считаются равными друг другу. Это означает, что с точки зрения PMR они представляют один логический тип ресурса, даже если созданы с разными флагами.
+Имя функции не `numa_memory_resource()`, потому что в C++ в одной области видимости нельзя объявить класс и функцию с одним и тем же идентификатором.
 
-### `ArenaMemoryResource`
+Важная особенность PMR equality: все объекты `numa_memory_resource` считаются равными друг другу. Это означает, что с точки зрения PMR они представляют один логический тип ресурса, даже если созданы с разными флагами.
 
-`ArenaMemoryResource` владеет отдельной `NumaArena` и не обращается к глобальному `NumaManager`. Это полезно, когда нужно явно создать изолированную арену:
+### `numa_arena_memory_resource`
+
+`numa_arena_memory_resource` владеет отдельной `NumaArena` и не обращается к глобальному `NumaManager`. Это полезно, когда нужно явно создать изолированную арену:
 
 - для одного компонента;
 - для scoped lifetime;
@@ -88,14 +90,14 @@ std::pmr::memory_resource* no_cache = numa_memory_resource(false, false);
 - когда не нужен thread-local cache.
 
 ```cpp
-#include "arena_memory_resource.hpp"
+#include "numa_arena_memory_resource.hpp"
 
 #include <memory_resource>
 #include <string>
 #include <vector>
 
 int main() {
-    ArenaMemoryResource resource(0, true);
+    numa_arena_memory_resource resource(0, true);
 
     std::pmr::vector<int> values(&resource);
     std::pmr::string text(&resource);
@@ -108,8 +110,8 @@ int main() {
 Конструкторы:
 
 ```cpp
-ArenaMemoryResource(bool sync = true, bool do_pinning = false);
-ArenaMemoryResource(int node_id, bool sync = true, bool do_pinning = false);
+numa_arena_memory_resource(bool sync = true, bool do_pinning = false);
+numa_arena_memory_resource(int node_id, bool sync = true, bool do_pinning = false);
 ```
 
 Параметры:
@@ -118,13 +120,13 @@ ArenaMemoryResource(int node_id, bool sync = true, bool do_pinning = false);
 - `sync` - включает mutex-based синхронизацию внутри small/large allocators. Если `false`, ресурс рассчитан на single-threaded владение;
 - `do_pinning` - попытаться закрепить создающий поток на выбранном NUMA node.
 
-`ArenaMemoryResource` сравнивается по идентичности: два разных экземпляра не равны друг другу, даже если используют один и тот же `node_id`.
+`numa_arena_memory_resource` сравнивается по идентичности: два разных экземпляра не равны друг другу, даже если используют один и тот же `node_id`.
 
-### `SimpleNumaMemoryResource`
+### `numa_simple_memory_resource`
 
-`SimpleNumaMemoryResource` - базовый, предсказуемый upstream allocator для NUMA-aware памяти. Он специально спроектирован как минимальный слой между `std::pmr::memory_resource` и OS virtual memory: без арен, slab allocation, size classes, thread-local cache, span cache и других оптимизирующих структур.
+`numa_simple_memory_resource` - базовый, предсказуемый upstream allocator для NUMA-aware памяти. Он специально спроектирован как минимальный слой между `std::pmr::memory_resource` и OS virtual memory: без арен, slab allocation, size classes, thread-local cache, span cache и других оптимизирующих структур.
 
-Его задача - дать простой и прозрачный способ получить memory mapping, привязанный к NUMA node. Это делает `SimpleNumaMemoryResource` удобной опорной реализацией: его поведение легко объяснить, легко сравнить с более сложными ресурсами и легко использовать там, где важнее предсказуемость, чем максимальная скорость на частых allocation/deallocation циклах.
+Его задача - дать простой и прозрачный способ получить memory mapping, привязанный к NUMA node. Это делает `numa_simple_memory_resource` удобной опорной реализацией: его поведение легко объяснить, легко сравнить с более сложными ресурсами и легко использовать там, где важнее предсказуемость, чем максимальная скорость на частых allocation/deallocation циклах.
 
 Каждое выделение:
 
@@ -135,13 +137,13 @@ ArenaMemoryResource(int node_id, bool sync = true, bool do_pinning = false);
 5. при освобождении читает header и вызывает `VirtualMemory::release`.
 
 ```cpp
-#include "simple_numa_memory_resource.hpp"
+#include "numa_simple_memory_resource.hpp"
 
 #include <memory_resource>
 #include <vector>
 
 int main() {
-    SimpleNumaMemoryResource resource(0);
+    numa_simple_memory_resource resource(0);
 
     std::pmr::vector<int> values(&resource);
     values.resize(4096);
@@ -151,22 +153,22 @@ int main() {
 Варианты создания:
 
 ```cpp
-SimpleNumaMemoryResource fixed_to_current_cpu_node;
-SimpleNumaMemoryResource fixed_to_node(0);
+numa_simple_memory_resource fixed_to_current_cpu_node;
+numa_simple_memory_resource fixed_to_node(0);
 
-auto dynamic_node = SimpleNumaMemoryResource::current_node_per_allocation();
+auto dynamic_node = numa_simple_memory_resource::current_node_per_allocation();
 ```
 
 Обычные конструкторы фиксируют NUMA node на время жизни ресурса. `current_node_per_allocation()` пересчитывает NUMA node для каждого выделения по текущему CPU. Это гибко, но дорого, поэтому такой режим стоит использовать только осознанно.
 
-`SimpleNumaMemoryResource` полезен именно как upstream allocator: он не пытается самостоятельно решать задачу высокопроизводительного reuse, а предоставляет понятную политику получения памяти у ОС с NUMA binding. Поверх него можно строить другие allocator layers, использовать его как baseline в benchmark-ах или выбирать его для редких крупных выделений, где стоимость системного вызова приемлема.
+`numa_simple_memory_resource` полезен именно как upstream allocator: он не пытается самостоятельно решать задачу высокопроизводительного reuse, а предоставляет понятную политику получения памяти у ОС с NUMA binding. Поверх него можно строить другие allocator layers, использовать его как baseline в benchmark-ах или выбирать его для редких крупных выделений, где стоимость системного вызова приемлема.
 
 ## Как использовать
 
 Основной способ использования - передать ресурс в PMR-контейнер.
 
 ```cpp
-#include "numa_aware_memory_resource.hpp"
+#include "numa_memory_resource.hpp"
 
 #include <memory_resource>
 #include <string>
@@ -183,7 +185,7 @@ struct RequestState {
 };
 
 int main() {
-    auto* resource = numa_memory_resource();
+    auto* resource = default_numa_memory_resource();
 
     RequestState state(resource);
     state.ids.reserve(1024);
@@ -194,18 +196,18 @@ int main() {
 Можно также использовать `std::pmr::polymorphic_allocator` напрямую:
 
 ```cpp
-auto* resource = numa_memory_resource();
+auto* resource = default_numa_memory_resource();
 std::pmr::polymorphic_allocator<std::byte> allocator(resource);
 
 std::byte* data = allocator.allocate(4096);
 allocator.deallocate(data, 4096);
 ```
 
-Для большинства приложений стоит начинать с `numa_memory_resource()`: он включает thread-local cache и автоматически выбирает арену текущего NUMA node.
+Для большинства приложений стоит начинать с `default_numa_memory_resource()`: он включает thread-local cache и автоматически выбирает арену текущего NUMA node.
 
-`ArenaMemoryResource` стоит выбирать, если ресурс должен иметь явное владение и ограниченный lifetime. Например, можно создать арену на время работы одного пайплайна, очереди или набора временных структур.
+`numa_arena_memory_resource` стоит выбирать, если ресурс должен иметь явное владение и ограниченный lifetime. Например, можно создать арену на время работы одного пайплайна, очереди или набора временных структур.
 
-`SimpleNumaMemoryResource` стоит выбирать, если нужен базовый и предсказуемый upstream allocator: один allocation равен одному OS mapping, NUMA placement задается явно, а освобождение напрямую возвращает mapping ОС. Такая модель медленнее на частых выделениях, но очень удобна как фундаментальный слой, baseline для сравнения и простая альтернатива оптимизирующим аренам.
+`numa_simple_memory_resource` стоит выбирать, если нужен базовый и предсказуемый upstream allocator: один allocation равен одному OS mapping, NUMA placement задается явно, а освобождение напрямую возвращает mapping ОС. Такая модель медленнее на частых выделениях, но очень удобна как фундаментальный слой, baseline для сравнения и простая альтернатива оптимизирующим аренам.
 
 ## Архитектура
 
@@ -215,7 +217,7 @@ allocator.deallocate(data, 4096);
 std::pmr containers / user code
         |
         v
-NumaMemoryResource / ArenaMemoryResource / SimpleNumaMemoryResource
+numa_memory_resource / numa_arena_memory_resource / numa_simple_memory_resource
         |
         v
 ThreadLocalCache        NumaManager
@@ -230,7 +232,7 @@ ThreadLocalCache        NumaManager
               VirtualMemory: mmap + mbind + munmap
 ```
 
-`SimpleNumaMemoryResource` идет почти напрямую в `VirtualMemory`, минуя основную allocator architecture. Это намеренное свойство: ресурс играет роль базового upstream allocator с максимально прозрачным поведением. `ArenaMemoryResource` использует собственную `NumaArena`. `NumaMemoryResource` использует `NumaManager`, thread-local контекст и разделяемые арены на NUMA node.
+`numa_simple_memory_resource` идет почти напрямую в `VirtualMemory`, минуя основную allocator architecture. Это намеренное свойство: ресурс играет роль базового upstream allocator с максимально прозрачным поведением. `numa_arena_memory_resource` использует собственную `NumaArena`. `numa_memory_resource` использует `NumaManager`, thread-local контекст и разделяемые арены на NUMA node.
 
 ### `VirtualMemory`
 
@@ -264,7 +266,7 @@ ThreadLocalCache        NumaManager
 - определить node текущего CPU через `sched_getcpu`;
 - попытаться закрепить текущий поток на CPU заданного node через `sched_setaffinity`.
 
-`NumaMemoryResource` использует `NumaManager` как глобальный координатор: поток спрашивает текущий node, получает соответствующую арену и дальше работает с ней через `ThreadLocalCache`.
+`numa_memory_resource` использует `NumaManager` как глобальный координатор: поток спрашивает текущий node, получает соответствующую арену и дальше работает с ней через `ThreadLocalCache`.
 
 ### `ThreadLocalCache`
 
@@ -415,14 +417,14 @@ deallocate(ptr)
 
 Внутренние allocators используют `OptionalMutexLock`: mutex реально берется только если соответствующий объект создан в `sync = true` режиме.
 
-`NumaMemoryResource` ориентирован на многопоточное использование: глобальные арены создаются с синхронизацией, а fast path для small allocations дополнительно ускоряется через `ThreadLocalCache`.
+`numa_memory_resource` ориентирован на многопоточное использование: глобальные арены создаются с синхронизацией, а fast path для small allocations дополнительно ускоряется через `ThreadLocalCache`.
 
-`ArenaMemoryResource` позволяет выбрать `sync` вручную:
+`numa_arena_memory_resource` позволяет выбрать `sync` вручную:
 
 - `sync = true` - ресурс можно разделять между потоками;
 - `sync = false` - блокировки отключены, такой режим подходит для single-threaded владения и снижает overhead.
 
-`SimpleNumaMemoryResource` не хранит shared allocator state и ведет себя как тонкий upstream layer: каждое выделение и освобождение идет через системные вызовы, без скрытого кэширования и переиспользования spans.
+`numa_simple_memory_resource` не хранит shared allocator state и ведет себя как тонкий upstream layer: каждое выделение и освобождение идет через системные вызовы, без скрытого кэширования и переиспользования spans.
 
 ### Metadata и layout
 
@@ -468,17 +470,17 @@ Header нужен, чтобы deallocation могла восстановить:
 
 ## Когда выбирать какой ресурс
 
-`NumaMemoryResource` - выбор по умолчанию. Используйте его, если нужна NUMA-aware память для PMR-контейнеров в обычном многопоточном коде. Он дает наиболее полную функциональность: topology detection, per-node arenas, thread-local cache, foreign deallocation routing.
+`numa_memory_resource` - выбор по умолчанию. Используйте его, если нужна NUMA-aware память для PMR-контейнеров в обычном многопоточном коде. Он дает наиболее полную функциональность: topology detection, per-node arenas, thread-local cache, foreign deallocation routing.
 
-`ArenaMemoryResource` - выбор для изолированного владения. Используйте его, если нужен отдельный allocator lifetime, явный `node_id`, отключаемая синхронизация или контроль без singleton manager.
+`numa_arena_memory_resource` - выбор для изолированного владения. Используйте его, если нужен отдельный allocator lifetime, явный `node_id`, отключаемая синхронизация или контроль без singleton manager.
 
-`SimpleNumaMemoryResource` - выбор для базового upstream поведения. Используйте его, если нужно проверить NUMA placement без сложной allocator machinery, получить максимально понятную модель владения memory mappings или иметь простой нижний слой для будущих allocator abstractions.
+`numa_simple_memory_resource` - выбор для базового upstream поведения. Используйте его, если нужно проверить NUMA placement без сложной allocator machinery, получить максимально понятную модель владения memory mappings или иметь простой нижний слой для будущих allocator abstractions.
 
 ## Краткая карта исходников
 
-- `src/numa_aware_memory_resource.hpp` - основной публичный `NumaMemoryResource` и helper `numa_memory_resource`.
-- `src/arena_memory_resource.hpp` - самостоятельный PMR-ресурс поверх отдельной `NumaArena`.
-- `src/simple_numa_memory_resource.hpp` - простой PMR-ресурс поверх прямых OS mappings.
+- `src/numa_memory_resource.hpp` - основной публичный класс `numa_memory_resource` и функция `default_numa_memory_resource()`.
+- `src/numa_arena_memory_resource.hpp` - самостоятельный PMR-ресурс поверх отдельной `NumaArena`.
+- `src/numa_simple_memory_resource.hpp` - простой PMR-ресурс поверх прямых OS mappings.
 - `src/numa_manager/` - singleton topology manager и per-node arenas.
 - `src/numa_arena/` - фасад small/large allocation для одного NUMA node и foreign deallocation routing.
 - `src/thread_local/` - `ThreadLocalCache` и thread-local NUMA context.

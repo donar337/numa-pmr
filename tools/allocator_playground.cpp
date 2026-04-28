@@ -6,7 +6,7 @@
 
 #include "numa_arena/numa_arena.hpp"
 #include "numa_manager/numa_manager.hpp"
-#include "numa_aware_memory_resource.hpp"
+#include "numa_memory_resource.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -35,9 +35,9 @@ int main() {
         arena.deallocate(large);
     }
 
-    // std::pmr поверх NumaMemoryResource.
+    // std::pmr поверх numa_memory_resource.
     {
-        std::pmr::vector<std::uint8_t> bytes(numa_memory_resource());
+        std::pmr::vector<std::uint8_t> bytes(get_numa_memory_resource());
         bytes.resize(8192);
         bytes[0] = 1;
         bytes.back() = 2;

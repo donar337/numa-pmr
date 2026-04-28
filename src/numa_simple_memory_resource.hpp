@@ -14,15 +14,15 @@
  *
  * Each allocation maps a fresh span from the OS, binds it to a NUMA node, and
  * each deallocation unmaps that span. This resource intentionally does not use
- * NumaMemoryResource internals, arenas, thread-local caches etc.
+ * numa_memory_resource internals, arenas, thread-local caches etc.
  */
-class SimpleNumaMemoryResource : public std::pmr::memory_resource {
+class numa_simple_memory_resource : public std::pmr::memory_resource {
 public:
     /**
      * Fixes the resource to the NUMA node of the CPU where it constructs.
      * All later allocations use that stored node, even from other threads.
      */
-    SimpleNumaMemoryResource() noexcept
+    numa_simple_memory_resource() noexcept
         : node_id_(numa_topology::current_node_from_cpu()),
           exact_calculate_(false)
     {}
@@ -31,7 +31,7 @@ public:
      * Fixes the resource to @param node_id when it exists. Invalid node ids
      * fall back to the same current-node selection as the default constructor.
      */
-    explicit SimpleNumaMemoryResource(int node_id) noexcept
+    explicit numa_simple_memory_resource(int node_id) noexcept
         : node_id_(numa_topology::normalize_node_id(node_id)),
           exact_calculate_(false)
     {}
@@ -42,8 +42,8 @@ public:
      *
      * ! Extremely slow in normal conditions, you must well know what you are doing !
      */
-    static SimpleNumaMemoryResource current_node_per_allocation() noexcept {
-        return SimpleNumaMemoryResource(numa_topology::current_node_from_cpu(), true);
+    static numa_simple_memory_resource current_node_per_allocation() noexcept {
+        return numa_simple_memory_resource(numa_topology::current_node_from_cpu(), true);
     }
 
 protected:
@@ -87,7 +87,7 @@ protected:
     }
 
     bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {
-        return dynamic_cast<const SimpleNumaMemoryResource*>(&other) != nullptr;
+        return dynamic_cast<const numa_simple_memory_resource*>(&other) != nullptr;
     }
 
 private:
@@ -96,7 +96,7 @@ private:
         size_t total_size;
     };
 
-    SimpleNumaMemoryResource(int node_id, bool exact_calculate) noexcept
+    numa_simple_memory_resource(int node_id, bool exact_calculate) noexcept
         : node_id_(node_id),
           exact_calculate_(exact_calculate)
     {}

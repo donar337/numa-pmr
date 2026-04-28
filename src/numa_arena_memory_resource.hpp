@@ -14,10 +14,10 @@
  * Each instance owns its arena and is only equal to itself. It intentionally
  * does not use NumaManager or ThreadLocalCache.
  */
-class ArenaMemoryResource : public std::pmr::memory_resource {
+class numa_arena_memory_resource : public std::pmr::memory_resource {
 public:
-    explicit ArenaMemoryResource(bool sync = true, bool do_pinning = false)
-        : ArenaMemoryResource(numa_topology::current_node_from_cpu(), sync, do_pinning)
+    explicit numa_arena_memory_resource(bool sync = true, bool do_pinning = false)
+        : numa_arena_memory_resource(numa_topology::current_node_from_cpu(), sync, do_pinning)
     {}
 
     /**
@@ -32,7 +32,7 @@ public:
      * @param do_pinning when true, tries to pin the constructing thread to the
      * selected node.
      */
-    ArenaMemoryResource(int node_id, bool sync = true, bool do_pinning = false)
+    numa_arena_memory_resource(int node_id, bool sync = true, bool do_pinning = false)
         : node_id_(numa_topology::normalize_node_id(node_id)),
           sync_(sync),
           do_pinning_(do_pinning),
@@ -42,10 +42,10 @@ public:
         }
     }
 
-    ArenaMemoryResource(const ArenaMemoryResource&) = delete;
-    ArenaMemoryResource& operator=(const ArenaMemoryResource&) = delete;
-    ArenaMemoryResource(ArenaMemoryResource&&) = delete;
-    ArenaMemoryResource& operator=(ArenaMemoryResource&&) = delete;
+    numa_arena_memory_resource(const numa_arena_memory_resource&) = delete;
+    numa_arena_memory_resource& operator=(const numa_arena_memory_resource&) = delete;
+    numa_arena_memory_resource(numa_arena_memory_resource&&) = delete;
+    numa_arena_memory_resource& operator=(numa_arena_memory_resource&&) = delete;
 
     int node_id() const noexcept {
         return node_id_;

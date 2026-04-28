@@ -1,4 +1,4 @@
-#include "numa_aware_memory_resource.hpp"
+#include "numa_memory_resource.hpp"
 
 #include <benchmark/benchmark.h>
 
@@ -9,7 +9,7 @@
 
 namespace {
 
-// backend: 0 — NumaMemoryResource, 1 — std::pmr::new_delete_resource (see registration at bottom of file).
+// backend: 0 — numa_memory_resource, 1 — std::pmr::new_delete_resource (see registration at bottom of file).
 constexpr int kNumaBackend = 0;
 constexpr int kNewDeleteBackend = 1;
 
@@ -30,7 +30,7 @@ void BM_ImmediateAllocateFree(benchmark::State& state) {
     const int backend = static_cast<int>(state.range(1));
 
     if (backend == kNumaBackend) {
-        NumaMemoryResource resource;
+        numa_memory_resource resource;
         immediate_loop(state, &resource, size);
     } else {
         std::pmr::memory_resource* resource = std::pmr::new_delete_resource();
@@ -69,7 +69,7 @@ void BM_BatchAllocateFree(benchmark::State& state) {
     std::vector<void*> ptrs(batch_size);
 
     if (backend == kNumaBackend) {
-        NumaMemoryResource resource;
+        numa_memory_resource resource;
         batch_loop(state, &resource, size, batch_size, ptrs);
     } else {
         std::pmr::memory_resource* resource = std::pmr::new_delete_resource();
@@ -96,7 +96,7 @@ void BM_MixedSmallAllocateFree(benchmark::State& state) {
     const int backend = static_cast<int>(state.range(0));
 
     if (backend == kNumaBackend) {
-        NumaMemoryResource resource;
+        numa_memory_resource resource;
         mixed_small_loop(state, &resource);
     } else {
         std::pmr::memory_resource* resource = std::pmr::new_delete_resource();
@@ -123,7 +123,7 @@ void BM_PmrVectorPushBack(benchmark::State& state) {
     const int backend = static_cast<int>(state.range(1));
 
     if (backend == kNumaBackend) {
-        NumaMemoryResource resource;
+        numa_memory_resource resource;
         pmr_vector_push_back_loop(state, &resource, count);
     } else {
         std::pmr::memory_resource* resource = std::pmr::new_delete_resource();

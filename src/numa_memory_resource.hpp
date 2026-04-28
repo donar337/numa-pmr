@@ -6,13 +6,13 @@
 
 
 /**
- * 
+ * Main NUMA-aware PMR resource using NumaManager and optional ThreadLocalCache.
  */
-class NumaMemoryResource : public std::pmr::memory_resource {
+class numa_memory_resource : public std::pmr::memory_resource {
 public:
     /**
-     * Constucts new NumaMemoryResource object. 
-     * ! All NumaMemoryResource objects are considered equal in terms of PMR equality !.
+     * Constructs new numa_memory_resource object.
+     * ! All numa_memory_resource objects are considered equal in terms of PMR equality !.
      *
      * @param do_pinning pin the current thread to the detected NUMA node when.
      * ! For thread will be used heuristic from its first context initialization (allocation call) !
@@ -20,7 +20,7 @@ public:
      * @param use_thread_cache use thread local cache.
      * ! For thread will be used heuristic from its first context initialization (allocation call) !
      */
-    explicit NumaMemoryResource(bool do_pinning = false, bool use_thread_cache = true) noexcept
+    explicit numa_memory_resource(bool do_pinning = false, bool use_thread_cache = true) noexcept
         : do_pinning_(do_pinning),
           use_thread_cache_(use_thread_cache)
     {}
@@ -39,7 +39,7 @@ protected:
     }
 
     bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {
-        return dynamic_cast<const NumaMemoryResource*>(&other) != nullptr;
+        return dynamic_cast<const numa_memory_resource*>(&other) != nullptr;
     }
 
 private:
@@ -48,14 +48,14 @@ private:
 };
 
 // TODO somehow slow down performance by ~20%
-inline std::pmr::memory_resource* numa_memory_resource(
+inline std::pmr::memory_resource* get_numa_memory_resource(
     bool do_pinning = false,
     bool use_thread_cache = true
 ) {
-    static NumaMemoryResource default_resource(false, true);
-    static NumaMemoryResource pinned_resource(true, true);
-    static NumaMemoryResource no_cache_resource(false, false);
-    static NumaMemoryResource pinned_no_cache_resource(true, false);
+    static numa_memory_resource default_resource(false, true);
+    static numa_memory_resource pinned_resource(true, true);
+    static numa_memory_resource no_cache_resource(false, false);
+    static numa_memory_resource pinned_no_cache_resource(true, false);
 
     if (do_pinning) {
         return use_thread_cache ? &pinned_resource : &pinned_no_cache_resource;

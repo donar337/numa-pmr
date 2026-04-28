@@ -3,7 +3,7 @@ flowchart TD
 
     T[Thread]
 
-    T --> PMR[NumaMemoryResource]
+    T --> PMR[numa_memory_resource]
 
     PMR --> TLC[Thread Local Cache]
 
