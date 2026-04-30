@@ -14,6 +14,10 @@ Example:
 затем по числам в сегментах вида name:value слева направо.
 
 ./build-bench-release/tests/one_node/one_node_bench_allocators --benchmark_format=json 2>/dev/null | python3 tests/one_node/benchmark/compare_benchmark_runs.py
+
+python3 tests/one_node/benchmark/compare_benchmark_runs.py bench.json --numa-backend 12 --baseline-backend 10
+
+python3 tests/one_node/benchmark/compare_benchmark_runs.py bench.json --numa-backend 13 --baseline-backend 11
 """
 
 from __future__ import annotations
