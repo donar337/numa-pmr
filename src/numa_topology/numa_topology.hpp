@@ -6,6 +6,49 @@
 
 namespace numa_topology {
 
+inline bool apply_affinity_from_bitmask(const struct bitmask* cpus) noexcept {
+    if (!cpus) {
+        return false;
+    }
+
+    cpu_set_t affinity;
+    CPU_ZERO(&affinity);
+
+    bool has_cpu = false;
+    for (unsigned int cpu = 0; cpu < cpus->size && cpu < CPU_SETSIZE; ++cpu) {
+        if (numa_bitmask_isbitset(cpus, cpu)) {
+            CPU_SET(static_cast<int>(cpu), &affinity);
+            has_cpu = true;
+        }
+    }
+
+    if (!has_cpu) {
+        return false;
+    }
+
+    return sched_setaffinity(0, sizeof(affinity), &affinity) == 0;
+}
+
+template <typename CpuRange>
+inline bool apply_affinity_from_cpus(const CpuRange& cpus) noexcept {
+    cpu_set_t affinity;
+    CPU_ZERO(&affinity);
+
+    bool has_cpu = false;
+    for (int cpu : cpus) {
+        if (cpu >= 0 && cpu < CPU_SETSIZE) {
+            CPU_SET(cpu, &affinity);
+            has_cpu = true;
+        }
+    }
+
+    if (!has_cpu) {
+        return false;
+    }
+
+    return sched_setaffinity(0, sizeof(affinity), &affinity) == 0;
+}
+
 inline int current_node_from_cpu() noexcept {
     if (numa_available() < 0) {
         return 0;
@@ -61,24 +104,10 @@ inline bool pin_current_thread_to_node(int node_id) noexcept {
         return false;
     }
 
-    cpu_set_t affinity;
-    CPU_ZERO(&affinity);
-
-    bool has_cpu = false;
-    for (unsigned int cpu = 0; cpu < cpus->size && cpu < CPU_SETSIZE; ++cpu) {
-        if (numa_bitmask_isbitset(cpus, cpu)) {
-            CPU_SET(static_cast<int>(cpu), &affinity);
-            has_cpu = true;
-        }
-    }
+    const bool pinned = apply_affinity_from_bitmask(cpus);
 
     numa_free_cpumask(cpus);
-
-    if (!has_cpu) {
-        return false;
-    }
-
-    return sched_setaffinity(0, sizeof(affinity), &affinity) == 0;
+    return pinned;
 }
 
 } // namespace numa_topology

@@ -1,5 +1,6 @@
 #include "numa_manager/numa_manager.hpp"
 
+#include "numa_topology/numa_topology.hpp"
 #include "virtual_memory/virtual_memory.hpp"
 
 #include <new>
@@ -83,24 +84,5 @@ bool NumaManager::pin_current_thread_to_node(int node_id) const noexcept {
     }
 
     const auto& cpus = node_to_cpus_[node_id];
-    if (cpus.empty()) {
-        return false;
-    }
-
-    cpu_set_t affinity;
-    CPU_ZERO(&affinity);
-
-    bool has_cpu = false;
-    for (int cpu : cpus) {
-        if (cpu >= 0 && cpu < CPU_SETSIZE) {
-            CPU_SET(cpu, &affinity);
-            has_cpu = true;
-        }
-    }
-
-    if (!has_cpu) {
-        return false;
-    }
-
-    return sched_setaffinity(0, sizeof(affinity), &affinity) == 0;
+    return numa_topology::apply_affinity_from_cpus(cpus);
 }
