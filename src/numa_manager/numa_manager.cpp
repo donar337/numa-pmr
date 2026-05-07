@@ -86,3 +86,7 @@ bool NumaManager::pin_current_thread_to_node(int node_id) const noexcept {
     const auto& cpus = node_to_cpus_[node_id];
     return numa_topology::apply_affinity_from_cpus(cpus);
 }
+
+bool NumaManager::unpin_thread() const noexcept {
+    return numa_topology::apply_affinity_to_all_cpus(cpu_count_);
+}

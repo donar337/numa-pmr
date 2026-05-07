@@ -37,6 +37,7 @@ public:
     }
 
     bool pin_current_thread_to_node(int node_id) const noexcept;
+    bool unpin_thread() const noexcept;
 
 private:
     NumaManager();
