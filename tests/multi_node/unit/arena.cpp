@@ -2,7 +2,7 @@
 
 #include "common/test_utils.hpp"
 #include "numa_arena/numa_arena.hpp"
-#include "numa_manager/numa_manager.hpp"
+#include "arena_manager/arena_manager.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -47,10 +47,10 @@ TEST_CASE("multi-node unit: arena selects allocation paths per NUMA node", "[mul
     }
 }
 
-// Verifies foreign small frees can be routed back to the owner arena through NumaManager.
+// Verifies foreign small frees can be routed back to the owner arena through ArenaManager.
 TEST_CASE("multi-node unit: arena routes cross-node frees to owner arena", "[multi_node][unit][arena][foreign]") {
     const auto nodes = numa_test::two_test_nodes();
-    auto& manager = NumaManager::instance();
+    auto& manager = ArenaManager::instance();
 
     void* ptr = manager.arena_for_node(nodes[0]).allocate(256, alignof(std::max_align_t));
     REQUIRE(ptr != nullptr);

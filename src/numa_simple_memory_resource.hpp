@@ -23,7 +23,7 @@ public:
      * All later allocations use that stored node, even from other threads.
      */
     numa_simple_memory_resource() noexcept
-        : node_id_(numa_topology::current_node_from_cpu()),
+        : node_id_(NumaTopologyManager::instance().current_node_from_cpu()),
           exact_calculate_(false)
     {}
 
@@ -32,7 +32,7 @@ public:
      * fall back to the same current-node selection as the default constructor.
      */
     explicit numa_simple_memory_resource(int node_id) noexcept
-        : node_id_(numa_topology::normalize_node_id(node_id)),
+        : node_id_(NumaTopologyManager::instance().normalize_node_id(node_id)),
           exact_calculate_(false)
     {}
 
@@ -40,10 +40,10 @@ public:
      * Creates a resource that recalculates the current CPU's NUMA node for
      * every allocation. The stored node_id_ is only an initial fallback value.
      *
-     * ! Extremely slow in normal conditions, you must well know what you are doing !
+     * ! low performance in normal conditions, you must well know what you are doing !
      */
     static numa_simple_memory_resource current_node_per_allocation() noexcept {
-        return numa_simple_memory_resource(numa_topology::current_node_from_cpu(), true);
+        return numa_simple_memory_resource(NumaTopologyManager::instance().current_node_from_cpu(), true);
     }
 
 protected:
@@ -65,7 +65,7 @@ protected:
             bytes + alignment + sizeof(AllocationHeader),
             VirtualMemory::page_size()
         );
-        const int node = exact_calculate_ ? numa_topology::current_node_from_cpu() : node_id_;
+        const int node = exact_calculate_ ? NumaTopologyManager::instance().current_node_from_cpu() : node_id_;
         void* raw = VirtualMemory::alloc_on_node(total_size, node);
 
         return allocate_from_span(raw, total_size, bytes, alignment);

@@ -17,8 +17,8 @@
 
 Публичный пользовательский слой сейчас состоит из трех `std::pmr::memory_resource`:
 
-- `numa_memory_resource` - основной NUMA-aware ресурс, использующий глобальный `NumaManager`, арену для текущего NUMA node и опциональный `ThreadLocalCache`.
-- `numa_arena_memory_resource` - самостоятельный PMR-ресурс, владеющий отдельной `NumaArena` на выбранном NUMA node. Он не использует `NumaManager` и `ThreadLocalCache`.
+- `numa_memory_resource` - основной NUMA-aware ресурс, использующий глобальный `ArenaManager`, арену для текущего NUMA node и опциональный `ThreadLocalCache`.
+- `numa_arena_memory_resource` - самостоятельный PMR-ресурс, владеющий отдельной `NumaArena` на выбранном NUMA node. Он не использует `ArenaManager` и `ThreadLocalCache`.
 - `numa_simple_memory_resource` - простой upstream-ресурс: каждое выделение напрямую мапит новый span через ОС, привязывает его к NUMA node и освобождает через `munmap`.
 
 Все три класса реализуют стандартный интерфейс `std::pmr::memory_resource`, поэтому их можно использовать с `std::pmr::vector`, `std::pmr::string`, `std::pmr::unordered_map`, `std::pmr::polymorphic_allocator` и собственными структурами данных.
@@ -81,7 +81,7 @@ std::pmr::memory_resource* no_cache = default_numa_memory_resource(false, false)
 
 ### `numa_arena_memory_resource`
 
-`numa_arena_memory_resource` владеет отдельной `NumaArena` и не обращается к глобальному `NumaManager`. Это полезно, когда нужно явно создать изолированную арену:
+`numa_arena_memory_resource` владеет отдельной `NumaArena` и не обращается к глобальному `ArenaManager`. Это полезно, когда нужно явно создать изолированную арену:
 
 - для одного компонента;
 - для scoped lifetime;
@@ -220,7 +220,7 @@ std::pmr containers / user code
 numa_memory_resource / numa_arena_memory_resource / numa_simple_memory_resource
         |
         v
-ThreadLocalCache        NumaManager
+ThreadLocalCache        ArenaManager
         |                   |
         v                   v
                  NumaArena per NUMA node
@@ -232,7 +232,7 @@ ThreadLocalCache        NumaManager
               VirtualMemory: mmap + mbind + munmap
 ```
 
-`numa_simple_memory_resource` идет почти напрямую в `VirtualMemory`, минуя основную allocator architecture. Это намеренное свойство: ресурс играет роль базового upstream allocator с максимально прозрачным поведением. `numa_arena_memory_resource` использует собственную `NumaArena`. `numa_memory_resource` использует `NumaManager`, thread-local контекст и разделяемые арены на NUMA node.
+`numa_simple_memory_resource` идет почти напрямую в `VirtualMemory`, минуя основную allocator architecture. Это намеренное свойство: ресурс играет роль базового upstream allocator с максимально прозрачным поведением. `numa_arena_memory_resource` использует собственную `NumaArena`. `numa_memory_resource` использует `ArenaManager`, thread-local контекст и разделяемые арены на NUMA node.
 
 ### `VirtualMemory`
 
@@ -246,9 +246,9 @@ ThreadLocalCache        NumaManager
 
 Размеры mapping округляются до page size. Если NUMA недоступна, node `0` считается допустимым single-node fallback.
 
-### `NumaManager`
+### `ArenaManager`
 
-`NumaManager` - singleton, который строит представление NUMA topology и владеет аренами для всех NUMA nodes.
+`ArenaManager` - singleton, который строит представление NUMA topology и владеет аренами для всех NUMA nodes.
 
 При инициализации он:
 
@@ -260,13 +260,13 @@ ThreadLocalCache        NumaManager
 
 Если NUMA недоступна, создается single-node topology: все CPU относятся к node `0`.
 
-`NumaManager` также умеет:
+`ArenaManager` также умеет:
 
 - вернуть арену по `node_id`;
 - определить node текущего CPU через `sched_getcpu`;
 - попытаться закрепить текущий поток на CPU заданного node через `sched_setaffinity`.
 
-`numa_memory_resource` использует `NumaManager` как глобальный координатор: поток спрашивает текущий node, получает соответствующую арену и дальше работает с ней через `ThreadLocalCache`.
+`numa_memory_resource` использует `ArenaManager` как глобальный координатор: поток спрашивает текущий node, получает соответствующую арену и дальше работает с ней через `ThreadLocalCache`.
 
 ### `ThreadLocalCache`
 
@@ -309,7 +309,7 @@ ThreadLocalCache        NumaManager
 
 `NumaArena::deallocate(ptr)` читает `BlockHeader` перед пользовательским pointer и определяет, куда вернуть память:
 
-- если блок принадлежит другому NUMA node и включен routing foreign deallocations, освобождение перенаправляется в арену-владелец через `NumaManager`;
+- если блок принадлежит другому NUMA node и включен routing foreign deallocations, освобождение перенаправляется в арену-владелец через `ArenaManager`;
 - если `size_class != 0`, это small block, он возвращается в `SmallObjectAllocator`;
 - если `size_class == 0`, это large block, он возвращается в `LargeObjectAllocator`.
 
@@ -405,7 +405,7 @@ requested size + alignment padding + BlockHeader
 deallocate(ptr)
     -> read BlockHeader
     -> header.node_id != current arena node
-    -> NumaManager::arena_for_node(header.node_id)
+    -> ArenaManager::arena_for_node(header.node_id)
     -> deallocate_foreign(ptr, header)
 ```
 
@@ -481,7 +481,7 @@ Header нужен, чтобы deallocation могла восстановить:
 - `src/numa_memory_resource.hpp` - основной публичный класс `numa_memory_resource` и функция `default_numa_memory_resource()`.
 - `src/numa_arena_memory_resource.hpp` - самостоятельный PMR-ресурс поверх отдельной `NumaArena`.
 - `src/numa_simple_memory_resource.hpp` - простой PMR-ресурс поверх прямых OS mappings.
-- `src/numa_manager/` - singleton topology manager и per-node arenas.
+- `src/arena_manager/` - singleton topology manager и per-node arenas.
 - `src/numa_arena/` - фасад small/large allocation для одного NUMA node и foreign deallocation routing.
 - `src/thread_local/` - `ThreadLocalCache` и thread-local NUMA context.
 - `src/size_divide/small_object/` - slabs, size classes и small allocator.

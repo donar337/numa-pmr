@@ -1,6 +1,6 @@
 #include "numa_arena/numa_arena.hpp"
 
-#include "numa_manager/numa_manager.hpp"
+#include "arena_manager/arena_manager.hpp"
 #include "virtual_memory/virtual_memory.hpp"
 
 #include <new>
@@ -57,7 +57,7 @@ void NumaArena::deallocate(void* ptr) {
     auto* header = BlockHeader::from_user_ptr(ptr);
 
     if (static_cast<int>(header->node_id) != node_id_ && route_foreign_deallocations_) {
-        NumaManager::instance()
+        ArenaManager::instance()
             .arena_for_node(static_cast<int>(header->node_id))
             .deallocate_foreign(ptr, header);
         return;

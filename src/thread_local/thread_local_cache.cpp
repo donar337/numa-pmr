@@ -1,6 +1,6 @@
 #include "thread_local/thread_local_cache.hpp"
 
-#include "numa_manager/numa_manager.hpp"
+#include "arena_manager/arena_manager.hpp"
 #include "virtual_memory/virtual_memory.hpp"
 
 #include <new>
@@ -24,11 +24,12 @@ ThreadLocalCache* ThreadLocalCache::create_on_current_node(
     bool do_pinning,
     bool use_thread_cache
 ) {
-    auto& manager = NumaManager::instance();
-    const int node_id = manager.current_node();
+    auto& manager = ArenaManager::instance();
+    auto& topology = NumaTopologyManager::instance();
+    const int node_id = topology.current_node_from_cpu();
 
     if (do_pinning) {
-        manager.pin_current_thread_to_node(node_id);
+        topology.pin_current_thread_to_node(node_id);
     }
 
     void* mem = VirtualMemory::alloc_on_node(sizeof(ThreadLocalCache), node_id);

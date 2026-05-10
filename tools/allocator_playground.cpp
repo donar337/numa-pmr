@@ -5,8 +5,8 @@
 // ./build/numa_allocator_playground
 
 #include "numa_arena/numa_arena.hpp"
-#include "numa_manager/numa_manager.hpp"
 #include "numa_memory_resource.hpp"
+#include "numa_topology/numa_topology.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -15,10 +15,10 @@
 #include <vector>
 
 int main() {
-    auto& mgr = NumaManager::instance();
+    auto& topology = NumaTopologyManager::instance();
 
-    std::cout << "node_count=" << mgr.node_count()
-              << " current_node=" << mgr.current_node() << '\n';
+    std::cout << "node_count=" << topology.node_count()
+              << " current_node=" << topology.current_node_from_cpu() << '\n';
 
     // Прямая работа с ареной (без singleton).
     {

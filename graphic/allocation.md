@@ -2,7 +2,7 @@
 sequenceDiagram
     participant User
     participant PMR as numa_memory_resource
-    participant Manager as NumaManager
+    participant Manager as ArenaManager
     participant TLC as ThreadCache
     participant Arena as NumaArena
     participant Small as SmallAllocator

@@ -1,145 +1,30 @@
 #pragma once
 
-#include <sched.h>
+#include <vector>
 
-#include <numa.h>
+class NumaTopologyManager {
+public:
+    static NumaTopologyManager& instance() noexcept;
 
-namespace numa_topology {
+    int current_node_from_cpu() const noexcept;
+    int node_count() const noexcept;
+    bool is_valid_node(int node_id) const noexcept;
+    int normalize_node_id(int node_id) const noexcept;
+    bool pin_current_thread_to_node(int node_id) const noexcept;
+    bool unpin_current_thread() const noexcept;
 
-inline bool apply_affinity_from_bitmask(const struct bitmask* cpus) noexcept {
-    if (!cpus) {
-        return false;
-    }
+private:
+    NumaTopologyManager();
 
-    cpu_set_t affinity;
-    CPU_ZERO(&affinity);
+    void init_topology() noexcept;
+    void init_single_node_topology() noexcept;
 
-    bool has_cpu = false;
-    for (unsigned int cpu = 0; cpu < cpus->size && cpu < CPU_SETSIZE; ++cpu) {
-        if (numa_bitmask_isbitset(cpus, cpu)) {
-            CPU_SET(static_cast<int>(cpu), &affinity);
-            has_cpu = true;
-        }
-    }
+    static bool apply_affinity_from_cpus(const std::vector<int>& cpus) noexcept;
+    static bool apply_affinity_to_all_cpus(int cpu_count) noexcept;
 
-    if (!has_cpu) {
-        return false;
-    }
-
-    
-    return sched_setaffinity(0, sizeof(affinity), &affinity) == 0;
-}
-
-template <typename CpuRange>
-inline bool apply_affinity_from_cpus(const CpuRange& cpus) noexcept {
-    cpu_set_t affinity;
-    CPU_ZERO(&affinity);
-
-    bool has_cpu = false;
-    for (int cpu : cpus) {
-        if (cpu >= 0 && cpu < CPU_SETSIZE) {
-            CPU_SET(cpu, &affinity);
-            has_cpu = true;
-        }
-    }
-
-    if (!has_cpu) {
-        return false;
-    }
-
-    return sched_setaffinity(0, sizeof(affinity), &affinity) == 0;
-}
-
-inline bool apply_affinity_to_all_cpus(int cpu_count) noexcept {
-    if (cpu_count <= 0) {
-        return false;
-    }
-
-    cpu_set_t affinity;
-    CPU_ZERO(&affinity);
-
-    const int limit = cpu_count < CPU_SETSIZE ? cpu_count : CPU_SETSIZE;
-    for (int cpu = 0; cpu < limit; ++cpu) {
-        CPU_SET(cpu, &affinity);
-    }
-
-    return sched_setaffinity(0, sizeof(affinity), &affinity) == 0;
-}
-
-inline int current_node_from_cpu() noexcept {
-    if (numa_available() < 0) {
-        return 0;
-    }
-
-    const int cpu = sched_getcpu();
-    if (cpu < 0) {
-        return 0;
-    }
-
-    const int node = numa_node_of_cpu(cpu);
-    return node >= 0 ? node : 0;
-}
-
-inline bool is_valid_node(int node_id) noexcept {
-    if (node_id < 0) {
-        return false;
-    }
-
-    if (numa_available() < 0) {
-        return node_id == 0;
-    }
-
-    if (node_id > numa_max_node()) {
-        return false;
-    }
-
-    return numa_all_nodes_ptr != nullptr &&
-           numa_bitmask_isbitset(numa_all_nodes_ptr, static_cast<unsigned int>(node_id)) != 0;
-}
-
-inline int normalize_node_id(int node_id) noexcept {
-    return is_valid_node(node_id) ? node_id : current_node_from_cpu();
-}
-
-inline bool pin_current_thread_to_node(int node_id) noexcept {
-    if (!is_valid_node(node_id)) {
-        return false;
-    }
-
-    if (numa_available() < 0) {
-        return node_id == 0;
-    }
-
-    struct bitmask* cpus = numa_allocate_cpumask();
-    if (!cpus) {
-        return false;
-    }
-
-    const int ret = numa_node_to_cpus(node_id, cpus);
-    if (ret != 0) {
-        numa_free_cpumask(cpus);
-        return false;
-    }
-
-    const bool pinned = apply_affinity_from_bitmask(cpus);
-
-    numa_free_cpumask(cpus);
-    return pinned;
-}
-
-inline bool unpin_thread() noexcept {
-    int cpu_count = 0;
-
-    if (numa_available() < 0) {
-        return true;
-    }
-    cpu_count = numa_num_configured_cpus();
-
-    if (cpu_count <= 0) {
-        cpu_count = 1;
-    }
-
-    return apply_affinity_to_all_cpus(cpu_count);
-}
-
-} // namespace numa_topology
+    int cpu_count_ = 1;
+    int node_count_ = 1;
+    std::vector<int> cpu_to_node_;
+    std::vector<std::vector<int>> node_to_cpus_;
+    std::vector<bool> node_present_;
+};

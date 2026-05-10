@@ -12,12 +12,12 @@
  * PMR resource that owns a standalone NUMA-bound arena.
  *
  * Each instance owns its arena and is only equal to itself. It intentionally
- * does not use NumaManager or ThreadLocalCache.
+ * does not use ArenaManager or ThreadLocalCache.
  */
 class numa_arena_memory_resource : public std::pmr::memory_resource {
 public:
     explicit numa_arena_memory_resource(bool sync = true, bool do_pinning = false)
-        : numa_arena_memory_resource(numa_topology::current_node_from_cpu(), sync, do_pinning)
+        : numa_arena_memory_resource(NumaTopologyManager::instance().current_node_from_cpu(), sync, do_pinning)
     {}
 
     /**
@@ -33,12 +33,12 @@ public:
      * selected node.
      */
     numa_arena_memory_resource(int node_id, bool sync = true, bool do_pinning = false)
-        : node_id_(numa_topology::normalize_node_id(node_id)),
+        : node_id_(NumaTopologyManager::instance().normalize_node_id(node_id)),
           sync_(sync),
           do_pinning_(do_pinning),
           arena_(create_arena(node_id_)) {
         if (do_pinning_) {
-            numa_topology::pin_current_thread_to_node(node_id_);
+            NumaTopologyManager::instance().pin_current_thread_to_node(node_id_);
         }
     }
 

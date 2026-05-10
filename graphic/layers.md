@@ -7,7 +7,7 @@ flowchart TD
 
     PMR --> TLC[Thread Local Cache]
 
-    PMR --> NM[NumaManager]
+    PMR --> NM[ArenaManager]
 
     NM --> NA[NumaArena per NUMA node]
 

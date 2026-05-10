@@ -65,8 +65,8 @@ add_numa_multi_node_test(
 )
 
 add_numa_multi_node_test(
-    multi_node_unit_numa_manager
-    unit/numa_manager.cpp
+    multi_node_unit_arena_manager
+    unit/arena_manager.cpp
     multi_node_unit
 )
 

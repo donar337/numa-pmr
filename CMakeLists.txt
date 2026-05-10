@@ -32,7 +32,8 @@ add_library(numa_allocator STATIC
     src/size_divide/large_object/large_object_allocator.cpp
     src/size_divide/small_object/small_object_allocator.cpp
     src/numa_arena/numa_arena.cpp
-    src/numa_manager/numa_manager.cpp
+    src/numa_topology/numa_topology.cpp
+    src/arena_manager/arena_manager.cpp
     src/thread_local/thread_local_cache.cpp
 )
 

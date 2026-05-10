@@ -6,7 +6,7 @@
 
 
 /**
- * Main NUMA-aware PMR resource using NumaManager and optional ThreadLocalCache.
+ * Main NUMA-aware PMR resource using ArenaManager and optional ThreadLocalCache.
  */
 class numa_memory_resource : public std::pmr::memory_resource {
 public:
