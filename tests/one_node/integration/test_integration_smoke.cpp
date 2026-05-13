@@ -98,7 +98,7 @@ TEST_CASE("one-node integration: PMR allocation cycles are writable and reusable
 }
 
 TEST_CASE("one-node integration: PMR works with thread cache disabled", "[one_node][integration][pmr]") {
-    numa_memory_resource resource(false, false);
+    numa_memory_resource resource(false);
 
     for (std::size_t size : numa_test::mixed_sizes()) {
         numa_test::allocate_touch_free(resource, size);
@@ -253,10 +253,10 @@ TEST_CASE("one-node integration: synchronized_pool_resource works over numa_simp
 // Verifies that all NUMA PMR resource objects are interchangeable for PMR equality.
 TEST_CASE("one-node integration: NUMA resources compare equal", "[one_node][integration][pmr]") {
     numa_memory_resource default_resource;
-    numa_memory_resource pinned_no_cache_resource(true, false);
+    numa_memory_resource no_cache_resource(false);
 
-    REQUIRE(default_resource.is_equal(pinned_no_cache_resource));
-    REQUIRE(pinned_no_cache_resource.is_equal(*get_numa_memory_resource()));
+    REQUIRE(default_resource.is_equal(no_cache_resource));
+    REQUIRE(no_cache_resource.is_equal(*get_numa_memory_resource()));
 }
 
 TEST_CASE("one-node integration: numa_arena_memory_resource compares by identity", "[one_node][integration][arena_pmr]") {

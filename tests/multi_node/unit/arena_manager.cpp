@@ -2,6 +2,7 @@
 
 #include "common/test_utils.hpp"
 #include "arena_manager/arena_manager.hpp"
+#include "numa_topology/numa_thread_pin_guard.hpp"
 
 #include <stdexcept>
 
@@ -57,10 +58,43 @@ TEST_CASE(
     numa_test::ScopedAffinityRestore affinity_restore;
 
     for (int node : nodes) {
-        REQUIRE(topology.pin_current_thread_to_node(node));
+        const cpu_set_t previous = topology.pin_current_thread_to_node(node);
+        REQUIRE(CPU_COUNT(&previous) != 0);
         numa_test::require_current_thread_on_node(node);
     }
 
-    REQUIRE_FALSE(topology.pin_current_thread_to_node(-1));
-    REQUIRE_FALSE(topology.pin_current_thread_to_node(topology.node_count()));
+    {
+        cpu_set_t bad_set = topology.pin_current_thread_to_node(-1);
+        REQUIRE_FALSE(CPU_COUNT(&bad_set) != 0);
+    }
+    {
+        cpu_set_t bad_set = topology.pin_current_thread_to_node(topology.node_count());
+        REQUIRE_FALSE(CPU_COUNT(&bad_set) != 0);
+    }
+}
+
+// Verifies the public scoped pin guard restores the previous affinity on scope exit.
+TEST_CASE(
+    "multi-node unit: thread pin guard restores affinity",
+    "[multi_node][unit][arena_manager][pinning]"
+) {
+    const auto nodes = numa_test::two_test_nodes();
+    cpu_set_t previous;
+    CPU_ZERO(&previous);
+    REQUIRE(sched_getaffinity(0, sizeof(previous), &previous) == 0);
+
+    {
+        numa_thread_pin_guard pin(nodes[0]);
+        REQUIRE(pin.pinned());
+        REQUIRE(pin.node_id() == nodes[0]);
+        numa_test::require_current_thread_on_node(nodes[0]);
+    }
+
+    cpu_set_t restored;
+    CPU_ZERO(&restored);
+    REQUIRE(sched_getaffinity(0, sizeof(restored), &restored) == 0);
+
+    for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+        REQUIRE(CPU_ISSET(cpu, &restored) == CPU_ISSET(cpu, &previous));
+    }
 }

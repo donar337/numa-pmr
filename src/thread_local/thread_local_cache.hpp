@@ -11,7 +11,7 @@ class ThreadNumaContextOwner;
 class ThreadLocalCache {
 public:
     static ThreadLocalCache& current();
-    static ThreadLocalCache& current(bool do_pinning, bool use_thread_cache);
+    static ThreadLocalCache& current(bool use_thread_cache);
 
     ~ThreadLocalCache() noexcept;
 
@@ -84,10 +84,7 @@ private:
 
     ThreadLocalCache(NumaArena& arena, int node_id, bool use_thread_cache) noexcept;
 
-    static ThreadLocalCache* create_on_current_node(
-        bool do_pinning,
-        bool use_thread_cache
-    );
+    static ThreadLocalCache* create_on_current_node(bool use_thread_cache);
     static void destroy(ThreadLocalCache* cache) noexcept;
 
     BlockHeader* take_cached(size_t class_index) noexcept {
@@ -131,7 +128,7 @@ private:
 
 class ThreadNumaContextOwner {
 public:
-    ThreadNumaContextOwner(bool do_pinning, bool use_thread_cache);
+    explicit ThreadNumaContextOwner(bool use_thread_cache);
     ~ThreadNumaContextOwner() noexcept;
 
     ThreadLocalCache& get() noexcept {

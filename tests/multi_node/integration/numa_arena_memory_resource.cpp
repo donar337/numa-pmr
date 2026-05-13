@@ -3,6 +3,7 @@
 #include "common/test_utils.hpp"
 #include "numa_arena_memory_resource.hpp"
 #include "numa_memory_resource.hpp"
+#include "numa_topology/numa_thread_pin_guard.hpp"
 
 #include <atomic>
 #include <memory_resource>
@@ -88,13 +89,14 @@ TEST_CASE("multi-node integration: numa_arena_memory_resource supports no-sync m
     }
 }
 
-// Verifies do_pinning construction leaves the creating thread on the selected NUMA node.
-TEST_CASE("multi-node integration: numa_arena_memory_resource can pin constructing thread", "[multi_node][integration][arena_pmr][pinning]") {
+// Verifies explicit pin guards can scope arena work to a selected NUMA node.
+TEST_CASE("multi-node integration: numa_arena_memory_resource works under thread pin guard", "[multi_node][integration][arena_pmr][pinning]") {
     const auto nodes = numa_test::two_test_nodes();
 
     for (int node : nodes) {
-        numa_test::ScopedThreadPin pin(node);
-        numa_arena_memory_resource resource(node, true, true);
+        numa_thread_pin_guard pin(node);
+        REQUIRE(pin.pinned());
+        numa_arena_memory_resource resource(node, true);
         REQUIRE(resource.node_id() == node);
         numa_test::require_current_thread_on_node(node);
         exercise_direct_allocations(resource);

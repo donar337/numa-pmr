@@ -16,8 +16,8 @@
  */
 class numa_arena_memory_resource : public std::pmr::memory_resource {
 public:
-    explicit numa_arena_memory_resource(bool sync = true, bool do_pinning = false)
-        : numa_arena_memory_resource(NumaTopologyManager::instance().current_node_from_cpu(), sync, do_pinning)
+    explicit numa_arena_memory_resource(bool sync = true)
+        : numa_arena_memory_resource(NumaTopologyManager::instance().current_node_from_cpu(), sync)
     {}
 
     /**
@@ -29,18 +29,12 @@ public:
      * @param sync when true, the internal small/large allocators use mutexes and
      * can be shared between threads; when false, locking is disabled for
      * single-threaded ownership.
-     * @param do_pinning when true, tries to pin the constructing thread to the
-     * selected node.
      */
-    numa_arena_memory_resource(int node_id, bool sync = true, bool do_pinning = false)
+    numa_arena_memory_resource(int node_id, bool sync = true)
         : node_id_(NumaTopologyManager::instance().normalize_node_id(node_id)),
           sync_(sync),
-          do_pinning_(do_pinning),
-          arena_(create_arena(node_id_)) {
-        if (do_pinning_) {
-            NumaTopologyManager::instance().pin_current_thread_to_node(node_id_);
-        }
-    }
+          arena_(create_arena(node_id_))
+    {}
 
     numa_arena_memory_resource(const numa_arena_memory_resource&) = delete;
     numa_arena_memory_resource& operator=(const numa_arena_memory_resource&) = delete;
@@ -94,6 +88,5 @@ private:
 
     int node_id_;
     bool sync_;
-    bool do_pinning_;
     NumaArenaPtr arena_;
 };

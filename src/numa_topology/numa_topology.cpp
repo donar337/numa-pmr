@@ -1,5 +1,4 @@
 #include "numa_topology/numa_topology.hpp"
-#include <sched.h>
 #include <numa.h>
 #include <thread>
 
@@ -42,16 +41,32 @@ int NumaTopologyManager::normalize_node_id(int node_id) const noexcept {
     return is_valid_node(node_id) ? node_id : current_node_from_cpu();
 }
 
-bool NumaTopologyManager::pin_current_thread_to_node(int node_id) const noexcept {
+cpu_set_t NumaTopologyManager::pin_current_thread_to_node(int node_id) const noexcept {
+    cpu_set_t previous;
+    CPU_ZERO(&previous);
+
     if (!is_valid_node(node_id)) {
-        return false;
+        return previous;
     }
 
     if (node_id >= static_cast<int>(node_to_cpus_.size())) {
-        return false;
+        return previous;
     }
 
-    return apply_affinity_from_cpus(node_to_cpus_[node_id]);
+    if (sched_getaffinity(0, sizeof(previous), &previous) != 0) {
+        CPU_ZERO(&previous);
+        return previous;
+    }
+
+    if (!apply_affinity_from_cpus(node_to_cpus_[node_id])) {
+        CPU_ZERO(&previous);
+    }
+
+    return previous;
+}
+
+bool NumaTopologyManager::set_affinity(const cpu_set_t& affinity) const noexcept {
+    return CPU_COUNT(&affinity) != 0 && sched_setaffinity(0, sizeof(affinity), &affinity) == 0;
 }
 
 bool NumaTopologyManager::unpin_current_thread() const noexcept {

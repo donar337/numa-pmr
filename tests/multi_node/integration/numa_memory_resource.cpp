@@ -3,6 +3,7 @@
 #include "common/test_utils.hpp"
 #include "numa_arena_memory_resource.hpp"
 #include "numa_memory_resource.hpp"
+#include "numa_topology/numa_thread_pin_guard.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -73,7 +74,7 @@ TEST_CASE("multi-node integration: numa_memory_resource works with thread cache 
         std::thread worker([node, &failed] {
             try {
                 numa_test::ScopedThreadPin pin(node);
-                numa_memory_resource resource(false, false);
+                numa_memory_resource resource(false);
                 exercise_direct_allocations(resource);
                 exercise_pmr_containers(&resource);
             } catch (...) {
@@ -94,7 +95,7 @@ TEST_CASE("multi-node integration: numa_memory_resource batch reuses thread cach
     std::thread worker([node = nodes[0], &failed] {
         try {
             numa_test::ScopedThreadPin pin(node);
-            numa_memory_resource resource(false, true);
+            numa_memory_resource resource(true);
             constexpr std::size_t size = 1024;
             constexpr std::size_t batch_size = 64;
             std::vector<void*> first(batch_size);
@@ -136,7 +137,7 @@ TEST_CASE("multi-node integration: get_numa_memory_resource works with PMR conta
         std::thread worker([node, &failed] {
             try {
                 numa_test::ScopedThreadPin pin(node);
-                auto* resource = get_numa_memory_resource(false, true);
+                auto* resource = get_numa_memory_resource();
                 exercise_pmr_containers(resource);
             } catch (...) {
                 failed.store(true);
@@ -148,16 +149,17 @@ TEST_CASE("multi-node integration: get_numa_memory_resource works with PMR conta
     REQUIRE_FALSE(failed.load());
 }
 
-// Verifies do_pinning mode keeps allocation context on the selected current node.
-TEST_CASE("multi-node integration: numa_memory_resource supports pinning mode", "[multi_node][integration][pmr][pinning]") {
+// Verifies explicit pin guards keep allocation context on the selected current node.
+TEST_CASE("multi-node integration: numa_memory_resource works under thread pin guard", "[multi_node][integration][pmr][pinning]") {
     const auto nodes = numa_test::two_test_nodes();
     std::atomic<bool> failed{false};
 
     for (int node : nodes) {
         std::thread worker([node, &failed] {
             try {
-                numa_test::ScopedThreadPin pin(node);
-                numa_memory_resource resource(true, true);
+                numa_thread_pin_guard pin(node);
+                REQUIRE(pin.pinned());
+                numa_memory_resource resource;
                 exercise_direct_allocations(resource);
                 numa_test::require_current_thread_on_node(node);
             } catch (...) {
@@ -179,7 +181,7 @@ TEST_CASE("multi-node integration: numa_memory_resource supports cross-node free
     std::thread allocator([node = nodes[0], &failed, &ptr] {
         try {
             numa_test::ScopedThreadPin pin(node);
-            numa_memory_resource resource(false, true);
+            numa_memory_resource resource(true);
             ptr = resource.allocate(512, alignof(std::max_align_t));
             numa_test::touch_memory(ptr, 512);
         } catch (...) {
@@ -194,7 +196,7 @@ TEST_CASE("multi-node integration: numa_memory_resource supports cross-node free
     std::thread freer([node = nodes[1], &failed, ptr] {
         try {
             numa_test::ScopedThreadPin pin(node);
-            numa_memory_resource resource(false, true);
+            numa_memory_resource resource(true);
             resource.deallocate(ptr, 512, alignof(std::max_align_t));
         } catch (...) {
             failed.store(true);
@@ -209,10 +211,10 @@ TEST_CASE("multi-node integration: numa_memory_resource supports cross-node free
 TEST_CASE("multi-node integration: numa_memory_resource instances compare equal", "[multi_node][integration][pmr][equality]") {
     numa_test::require_real_numa_system();
     numa_memory_resource default_resource;
-    numa_memory_resource pinned_no_cache_resource(true, false);
+    numa_memory_resource no_cache_resource(false);
     numa_arena_memory_resource arena_resource;
 
-    REQUIRE(default_resource.is_equal(pinned_no_cache_resource));
-    REQUIRE(pinned_no_cache_resource.is_equal(*get_numa_memory_resource()));
+    REQUIRE(default_resource.is_equal(no_cache_resource));
+    REQUIRE(no_cache_resource.is_equal(*get_numa_memory_resource()));
     REQUIRE_FALSE(default_resource.is_equal(arena_resource));
 }

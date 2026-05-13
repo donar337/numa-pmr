@@ -20,17 +20,10 @@ ThreadLocalCache::~ThreadLocalCache() noexcept {
     flush();
 }
 
-ThreadLocalCache* ThreadLocalCache::create_on_current_node(
-    bool do_pinning,
-    bool use_thread_cache
-) {
+ThreadLocalCache* ThreadLocalCache::create_on_current_node(bool use_thread_cache) {
     auto& manager = ArenaManager::instance();
     auto& topology = NumaTopologyManager::instance();
     const int node_id = topology.current_node_from_cpu();
-
-    if (do_pinning) {
-        topology.pin_current_thread_to_node(node_id);
-    }
 
     void* mem = VirtualMemory::alloc_on_node(sizeof(ThreadLocalCache), node_id);
 
@@ -73,16 +66,16 @@ void ThreadLocalCache::flush() noexcept {
 }
 
 ThreadLocalCache& ThreadLocalCache::current() {
-    return current(false, true);
+    return current(true);
 }
 
-ThreadLocalCache& ThreadLocalCache::current(bool do_pinning, bool use_thread_cache) {
-    static thread_local ThreadNumaContextOwner owner(do_pinning, use_thread_cache);
+ThreadLocalCache& ThreadLocalCache::current(bool use_thread_cache) {
+    static thread_local ThreadNumaContextOwner owner(use_thread_cache);
     return owner.get();
 }
 
-ThreadNumaContextOwner::ThreadNumaContextOwner(bool do_pinning, bool use_thread_cache)
-    : cache_(ThreadLocalCache::create_on_current_node(do_pinning, use_thread_cache))
+ThreadNumaContextOwner::ThreadNumaContextOwner(bool use_thread_cache)
+    : cache_(ThreadLocalCache::create_on_current_node(use_thread_cache))
 {}
 
 ThreadNumaContextOwner::~ThreadNumaContextOwner() noexcept {

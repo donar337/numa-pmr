@@ -16,7 +16,7 @@ TEST_CASE("multi-node unit: thread cache initializes on pinned NUMA nodes", "[mu
         std::thread worker([node, &failed] {
             try {
                 numa_test::ScopedThreadPin pin(node);
-                auto& cache = ThreadLocalCache::current(false, true);
+                auto& cache = ThreadLocalCache::current(true);
                 if (cache.node_id() != node) {
                     failed.store(true);
                 }
@@ -38,7 +38,7 @@ TEST_CASE("multi-node unit: thread cache reuses same-thread small blocks", "[mul
     std::thread worker([node = nodes[0], &failed] {
         try {
             numa_test::ScopedThreadPin pin(node);
-            auto& cache = ThreadLocalCache::current(false, true);
+            auto& cache = ThreadLocalCache::current(true);
             constexpr std::size_t size = 256;
 
             void* first = cache.allocate(size, alignof(std::max_align_t));
@@ -67,7 +67,7 @@ TEST_CASE("multi-node unit: thread cache supports disabled cache mode", "[multi_
     std::thread worker([node = nodes[1], &failed] {
         try {
             numa_test::ScopedThreadPin pin(node);
-            auto& cache = ThreadLocalCache::current(false, false);
+            auto& cache = ThreadLocalCache::current(false);
 
             for (std::size_t size : numa_test::mixed_sizes()) {
                 void* ptr = cache.allocate(size, alignof(std::max_align_t));
@@ -97,7 +97,7 @@ TEST_CASE("multi-node unit: thread cache handles cross-node frees", "[multi_node
     std::thread allocator([node = nodes[0], &failed, &ptr] {
         try {
             numa_test::ScopedThreadPin pin(node);
-            auto& cache = ThreadLocalCache::current(false, true);
+            auto& cache = ThreadLocalCache::current(true);
             ptr = cache.allocate(512, alignof(std::max_align_t));
             numa_test::touch_memory(ptr, 512);
         } catch (...) {
@@ -112,7 +112,7 @@ TEST_CASE("multi-node unit: thread cache handles cross-node frees", "[multi_node
     std::thread freer([node = nodes[1], &failed, ptr] {
         try {
             numa_test::ScopedThreadPin pin(node);
-            auto& cache = ThreadLocalCache::current(false, true);
+            auto& cache = ThreadLocalCache::current(true);
             cache.deallocate(ptr);
         } catch (...) {
             failed.store(true);

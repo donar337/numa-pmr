@@ -35,7 +35,7 @@
 #include <vector>
 
 int main() {
-    std::pmr::memory_resource* resource = default_numa_memory_resource();
+    std::pmr::memory_resource* resource = get_numa_memory_resource();
 
     std::pmr::vector<std::uint8_t> buffer(resource);
     buffer.resize(8192);
@@ -46,7 +46,6 @@ int main() {
 
 - текущий NUMA node, вычисленный по CPU, на котором выполняется поток;
 - ссылка на `NumaArena` этого узла;
-- настройка `do_pinning`;
 - настройка `use_thread_cache`.
 
 После этого поток обслуживает выделения через свою `ThreadLocalCache` и арену выбранного узла. Для small allocations это дает быстрый путь без обращения к глобальным структурам при cache hit.
@@ -54,26 +53,21 @@ int main() {
 Конструктор:
 
 ```cpp
-numa_memory_resource resource(
-    bool do_pinning = false,
-    bool use_thread_cache = true
-);
+numa_memory_resource resource(bool use_thread_cache = true);
 ```
 
 Параметры:
 
-- `do_pinning` - при создании thread-local контекста попытаться закрепить текущий поток на CPU выбранного NUMA node;
 - `use_thread_cache` - включить или отключить thread-local cache для small allocations.
 
 Также есть helper:
 
 ```cpp
-std::pmr::memory_resource* resource = default_numa_memory_resource();
-std::pmr::memory_resource* pinned = default_numa_memory_resource(true);
-std::pmr::memory_resource* no_cache = default_numa_memory_resource(false, false);
+std::pmr::memory_resource* resource = get_numa_memory_resource();
+std::pmr::memory_resource* no_cache = get_numa_memory_resource(false);
 ```
 
-`default_numa_memory_resource()` возвращает один из статических экземпляров `numa_memory_resource` для комбинации `do_pinning` и `use_thread_cache`.
+`get_numa_memory_resource()` возвращает один из статических экземпляров `numa_memory_resource` для выбранного значения `use_thread_cache`.
 
 Имя функции не `numa_memory_resource()`, потому что в C++ в одной области видимости нельзя объявить класс и функцию с одним и тем же идентификатором.
 
@@ -110,15 +104,14 @@ int main() {
 Конструкторы:
 
 ```cpp
-numa_arena_memory_resource(bool sync = true, bool do_pinning = false);
-numa_arena_memory_resource(int node_id, bool sync = true, bool do_pinning = false);
+numa_arena_memory_resource(bool sync = true);
+numa_arena_memory_resource(int node_id, bool sync = true);
 ```
 
 Параметры:
 
 - `node_id` - NUMA node, на котором будет создана арена. Некорректный `node_id` заменяется на node текущего CPU;
-- `sync` - включает mutex-based синхронизацию внутри small/large allocators. Если `false`, ресурс рассчитан на single-threaded владение;
-- `do_pinning` - попытаться закрепить создающий поток на выбранном NUMA node.
+- `sync` - включает mutex-based синхронизацию внутри small/large allocators. Если `false`, ресурс рассчитан на single-threaded владение.
 
 `numa_arena_memory_resource` сравнивается по идентичности: два разных экземпляра не равны друг другу, даже если используют один и тот же `node_id`.
 
@@ -185,7 +178,7 @@ struct RequestState {
 };
 
 int main() {
-    auto* resource = default_numa_memory_resource();
+    auto* resource = get_numa_memory_resource();
 
     RequestState state(resource);
     state.ids.reserve(1024);
@@ -196,14 +189,14 @@ int main() {
 Можно также использовать `std::pmr::polymorphic_allocator` напрямую:
 
 ```cpp
-auto* resource = default_numa_memory_resource();
+auto* resource = get_numa_memory_resource();
 std::pmr::polymorphic_allocator<std::byte> allocator(resource);
 
 std::byte* data = allocator.allocate(4096);
 allocator.deallocate(data, 4096);
 ```
 
-Для большинства приложений стоит начинать с `default_numa_memory_resource()`: он включает thread-local cache и автоматически выбирает арену текущего NUMA node.
+Для большинства приложений стоит начинать с `get_numa_memory_resource()`: он включает thread-local cache и автоматически выбирает арену текущего NUMA node.
 
 `numa_arena_memory_resource` стоит выбирать, если ресурс должен иметь явное владение и ограниченный lifetime. Например, можно создать арену на время работы одного пайплайна, очереди или набора временных структур.
 
@@ -264,7 +257,29 @@ ThreadLocalCache        ArenaManager
 
 - вернуть арену по `node_id`;
 - определить node текущего CPU через `sched_getcpu`;
-- попытаться закрепить текущий поток на CPU заданного node через `sched_setaffinity`.
+- временно закрепить текущий поток на CPU заданного node через `sched_setaffinity`.
+
+### `numa_thread_pin_guard`
+
+`numa_thread_pin_guard` - RAII-обертка для временной привязки текущего потока к NUMA node.
+
+```cpp
+#include "numa_topology/numa_thread_pin_guard.hpp"
+
+void run_on_node(int node_id) {
+    numa_thread_pin_guard pin(node_id);
+
+    if (!pin.pinned()) {
+        return;
+    }
+
+    // Work in this scope runs with affinity restricted to node_id CPUs.
+}
+```
+
+При создании guard сохраняет текущую affinity mask и вызывает `pin_current_thread_to_node(node_id)`. В деструкторе `noexcept` он восстанавливает сохраненную mask через `set_affinity(saved_mask)`. Это отличается от `unpin_current_thread()`, который сбрасывает affinity к текущей реализации "все CPU", а не к предыдущему состоянию потока.
+
+`numa_thread_pin_guard` нельзя копировать или перемещать: affinity принадлежит потоку, а не объекту. Для ручного управления доступны низкоуровневые функции `pin_current_thread_to_node(node_id)`, `set_affinity(mask)` и `unpin_current_thread()`.
 
 `numa_memory_resource` использует `ArenaManager` как глобальный координатор: поток спрашивает текущий node, получает соответствующую арену и дальше работает с ней через `ThreadLocalCache`.
 
@@ -478,7 +493,7 @@ Header нужен, чтобы deallocation могла восстановить:
 
 ## Краткая карта исходников
 
-- `src/numa_memory_resource.hpp` - основной публичный класс `numa_memory_resource` и функция `default_numa_memory_resource()`.
+- `src/numa_memory_resource.hpp` - основной публичный класс `numa_memory_resource` и функция `get_numa_memory_resource()`.
 - `src/numa_arena_memory_resource.hpp` - самостоятельный PMR-ресурс поверх отдельной `NumaArena`.
 - `src/numa_simple_memory_resource.hpp` - простой PMR-ресурс поверх прямых OS mappings.
 - `src/arena_manager/` - singleton topology manager и per-node arenas.
