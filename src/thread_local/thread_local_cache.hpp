@@ -11,7 +11,7 @@ class ThreadNumaContextOwner;
 class ThreadLocalCache {
 public:
     static ThreadLocalCache& current();
-    static ThreadLocalCache& current(bool use_thread_cache);
+    static void configure_current(bool use_thread_cache);
 
     ~ThreadLocalCache() noexcept;
 
@@ -73,6 +73,10 @@ public:
         return node_id_;
     }
 
+    void set_use_thread_cache(bool use_thread_cache) noexcept {
+        use_thread_cache_ = use_thread_cache;
+    }
+
 private:
     friend class ThreadNumaContextOwner;
 
@@ -128,13 +132,14 @@ private:
 
 class ThreadNumaContextOwner {
 public:
-    explicit ThreadNumaContextOwner(bool use_thread_cache);
+    ThreadNumaContextOwner() = default;
     ~ThreadNumaContextOwner() noexcept;
 
-    ThreadLocalCache& get() noexcept {
-        return *cache_;
-    }
+    ThreadLocalCache& get();
+    void configure(bool use_thread_cache);
 
 private:
-    ThreadLocalCache* cache_;
+    void ensure_cache(bool use_thread_cache);
+
+    ThreadLocalCache* cache_ = nullptr;
 };
