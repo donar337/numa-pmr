@@ -65,6 +65,42 @@ TEST_CASE("multi-node unit: arena routes cross-node frees to owner arena", "[mul
     manager.arena_for_node(nodes[0]).deallocate(next);
 }
 
+// Verifies foreign bins drain overflow batches and null/disabled-routing paths are no-ops or direct frees.
+TEST_CASE("multi-node unit: arena drains foreign overflow and direct foreign frees", "[multi_node][unit][arena][foreign]") {
+    const auto nodes = numa_test::two_test_nodes();
+    auto& owner = ArenaManager::instance().arena_for_node(nodes[0]);
+    auto& foreign = ArenaManager::instance().arena_for_node(nodes[1]);
+
+    NumaArenaDeleter{}(nullptr);
+    owner.deallocate(nullptr);
+
+    constexpr std::size_t size = 256;
+    constexpr std::size_t block_count = 600;
+    std::vector<void*> blocks;
+    blocks.reserve(block_count);
+
+    for (std::size_t i = 0; i < block_count; ++i) {
+        void* ptr = owner.allocate(size, alignof(std::max_align_t));
+        REQUIRE(ptr != nullptr);
+        numa_test::touch_memory(ptr, size, static_cast<unsigned char>(i % 251));
+        blocks.push_back(ptr);
+    }
+
+    for (void* ptr : blocks) {
+        foreign.deallocate(ptr);
+    }
+
+    void* reused = owner.allocate(size, alignof(std::max_align_t));
+    REQUIRE(reused != nullptr);
+    numa_test::touch_memory(reused, size, 0x7E);
+    owner.deallocate(reused);
+
+    NumaArena direct_foreign_free(nodes[1], false, true, false);
+    void* large = owner.allocate(SMALL_LARGE_THRESHOLD + 1024, alignof(std::max_align_t));
+    REQUIRE(large != nullptr);
+    direct_foreign_free.deallocate(large);
+}
+
 // Verifies standalone no-sync arenas work for single-threaded allocation cycles on each node.
 TEST_CASE("multi-node unit: arena supports standalone no-sync policy", "[multi_node][unit][arena][no_sync]") {
     const auto nodes = numa_test::two_test_nodes();

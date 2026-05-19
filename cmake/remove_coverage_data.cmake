@@ -1,0 +1,11 @@
+if(NOT DEFINED COVERAGE_BINARY_DIR)
+    message(FATAL_ERROR "COVERAGE_BINARY_DIR is required")
+endif()
+
+file(GLOB_RECURSE COVERAGE_DATA
+    "${COVERAGE_BINARY_DIR}/*.gcda"
+)
+
+if(COVERAGE_DATA)
+    file(REMOVE ${COVERAGE_DATA})
+endif()

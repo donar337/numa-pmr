@@ -3,7 +3,6 @@
 #include "common/test_utils.hpp"
 #include "size_divide/large_object/large_object_allocator.hpp"
 
-#include <array>
 #include <cstddef>
 
 namespace {
@@ -120,5 +119,42 @@ TEST_CASE("multi-node unit: large allocator supports no-sync reuse", "[multi_nod
         REQUIRE(second_header->raw_ptr == first_raw);
 
         allocator.deallocate(second);
+    }
+}
+
+// Verifies allocator guards and non-cacheable release paths for large spans.
+TEST_CASE("multi-node unit: large allocator handles cache bypass and invalid requests", "[multi_node][unit][large][invalid]") {
+    const auto nodes = numa_test::two_test_nodes();
+    constexpr std::size_t alignment = alignof(std::max_align_t);
+    constexpr std::size_t user_size = 8192;
+
+    for (int node : nodes) {
+        LargeObjectAllocator no_cache_allocator(node, 0, 0);
+        no_cache_allocator.deallocate(nullptr);
+
+        void* uncached = no_cache_allocator.allocate(user_size, alignment);
+        REQUIRE(uncached != nullptr);
+        no_cache_allocator.deallocate(uncached);
+
+        void* huge = no_cache_allocator.allocate(2 * 1024 * 1024 + 1, alignment);
+        REQUIRE(huge != nullptr);
+        auto* huge_header = BlockHeader::from_user_ptr(huge);
+        REQUIRE(huge_header->total_size > LargeObjectConfig::kLargeBinSizes[LargeObjectConfig::kNumLargeBins - 1]);
+        no_cache_allocator.deallocate(huge);
+
+        REQUIRE_THROWS_AS(
+            no_cache_allocator.allocate(
+                static_cast<std::size_t>(-1),
+                alignof(std::max_align_t)
+            ),
+            std::bad_alloc
+        );
+        REQUIRE_THROWS_AS(
+            no_cache_allocator.allocate(
+                1,
+                static_cast<std::size_t>(-1)
+            ),
+            std::bad_alloc
+        );
     }
 }

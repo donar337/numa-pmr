@@ -1,10 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "common/test_utils.hpp"
+#define private public
 #include "arena_manager/arena_manager.hpp"
 #include "numa_topology/numa_thread_pin_guard.hpp"
+#undef private
+
+#include "common/test_utils.hpp"
 
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 // Verifies that ArenaManager discovers a real multi-node topology and exposes arenas.
 TEST_CASE("multi-node unit: arena manager exposes multiple node arenas", "[multi_node][unit][arena_manager]") {
@@ -71,6 +76,42 @@ TEST_CASE(
         cpu_set_t bad_set = topology.pin_current_thread_to_node(topology.node_count());
         REQUIRE_FALSE(CPU_COUNT(&bad_set) != 0);
     }
+}
+
+// Verifies normalization, explicit affinity restore, and empty affinity rejection paths.
+TEST_CASE(
+    "multi-node unit: topology normalizes nodes and restores affinity",
+    "[multi_node][unit][arena_manager][topology]"
+) {
+    const auto nodes = numa_test::two_test_nodes();
+    auto& topology = NumaTopologyManager::instance();
+    numa_test::ScopedAffinityRestore affinity_restore;
+
+    REQUIRE(topology.is_valid_node(nodes[0]));
+    REQUIRE_FALSE(topology.is_valid_node(-1));
+    REQUIRE_FALSE(topology.is_valid_node(topology.node_count()));
+    REQUIRE(topology.normalize_node_id(nodes[0]) == nodes[0]);
+
+    {
+        numa_test::ScopedThreadPin pin(nodes[1]);
+        numa_test::require_current_thread_on_node(nodes[1]);
+        REQUIRE(topology.normalize_node_id(-1) == nodes[1]);
+    }
+
+    cpu_set_t empty;
+    CPU_ZERO(&empty);
+    REQUIRE_FALSE(topology.set_affinity(empty));
+    REQUIRE_FALSE(NumaTopologyManager::apply_affinity_from_cpus({}));
+    REQUIRE_FALSE(NumaTopologyManager::apply_affinity_from_cpus(std::vector<int>{-1, CPU_SETSIZE}));
+    REQUIRE_FALSE(NumaTopologyManager::apply_affinity_to_all_cpus(0));
+
+    auto saved_node_to_cpus = topology.node_to_cpus_;
+    topology.node_to_cpus_.clear();
+    cpu_set_t missing_cpu_mapping = topology.pin_current_thread_to_node(nodes[0]);
+    REQUIRE_FALSE(CPU_COUNT(&missing_cpu_mapping) != 0);
+    topology.node_to_cpus_ = std::move(saved_node_to_cpus);
+
+    REQUIRE(topology.unpin_current_thread());
 }
 
 // Verifies the public scoped pin guard restores the previous affinity on scope exit.

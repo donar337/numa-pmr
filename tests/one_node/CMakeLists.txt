@@ -86,6 +86,10 @@ if(NUMA_ALLOCATOR_ENABLE_COVERAGE)
     if(GCOVR_EXECUTABLE)
         add_custom_target(coverage_one_node_unit
             COMMAND
+                "${CMAKE_COMMAND}"
+                -D "COVERAGE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                -P "${CMAKE_SOURCE_DIR}/cmake/remove_coverage_data.cmake"
+            COMMAND
                 "${CMAKE_CTEST_COMMAND}"
                 --output-on-failure
                 -L one_node_unit
@@ -94,6 +98,7 @@ if(NUMA_ALLOCATOR_ENABLE_COVERAGE)
                 -r "${CMAKE_SOURCE_DIR}"
                 "${CMAKE_BINARY_DIR}"
                 --filter "${CMAKE_SOURCE_DIR}/src"
+                --gcov-ignore-parse-errors negative_hits.warn_once_per_file
                 --html
                 --html-details
                 -o "${CMAKE_BINARY_DIR}/coverage_one_node_unit.html"

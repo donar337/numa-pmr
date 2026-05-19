@@ -19,16 +19,25 @@ cmake -S . -B build-coverage -G Ninja \
 
 cmake --build build-coverage
 cmake --build build-coverage --target coverage_one_node_unit
+cmake --build build-coverage --target coverage_multi_node_unit
 
-# отчёт - build-coverage/coverage_one_node_unit.html
+# отчёты:
+# - build-coverage/coverage_one_node_unit.html
+# - build-coverage/coverage_multi_node_unit.html
 ```
+
+Для coverage нужен `gcovr`. Targets перед запуском удаляют старые counters и
+игнорируют известный баг `gcov` с отрицательными branch counters через
+`--gcov-ignore-parse-errors negative_hits.warn_once_per_file`. Multi-node unit
+coverage также требует машину с двумя доступными NUMA nodes.
 
 Сборка и запуск бенчей:
 
 ```bash
 cmake -S . -B build-bench -G Ninja \
   -DNUMA_ALLOCATOR_BUILD_TESTS=ON \
-  -DNUMA_ALLOCATOR_BUILD_BENCHMARKS=ON
+  -DNUMA_ALLOCATOR_BUILD_BENCHMARKS=ON \
+  -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build-bench
 ./build-bench/tests/one_node/one_node_bench_allocators

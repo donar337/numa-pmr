@@ -144,3 +144,39 @@ TEST_CASE("multi-node unit: thread cache handles cross-node frees", "[multi_node
 
     REQUIRE_FALSE(failed.load());
 }
+
+// Verifies null frees are no-ops and overflowing a per-class thread cache falls back to the arena.
+TEST_CASE("multi-node unit: thread cache handles null and overflow fallback", "[multi_node][unit][thread_cache][overflow]") {
+    const auto nodes = numa_test::two_test_nodes();
+    std::atomic<bool> failed{false};
+
+    std::thread worker([node = nodes[0], &failed] {
+        try {
+            numa_test::ScopedThreadPin pin(node);
+            ThreadLocalCache::configure_current(true);
+            auto& cache = ThreadLocalCache::current();
+            cache.deallocate(nullptr);
+
+            constexpr std::size_t size = 256;
+            constexpr std::size_t allocation_count = 520;
+            void* ptrs[allocation_count]{};
+
+            for (std::size_t i = 0; i < allocation_count; ++i) {
+                ptrs[i] = cache.allocate(size, alignof(std::max_align_t));
+                if (!ptrs[i]) {
+                    failed.store(true);
+                    return;
+                }
+            }
+
+            for (void* ptr : ptrs) {
+                cache.deallocate(ptr);
+            }
+        } catch (...) {
+            failed.store(true);
+        }
+    });
+    worker.join();
+
+    REQUIRE_FALSE(failed.load());
+}

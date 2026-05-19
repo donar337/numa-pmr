@@ -49,6 +49,32 @@ TEST_CASE("multi-node unit: virtual memory bind_to_node applies required placeme
     }
 }
 
+// Verifies best-effort policies and advisory helpers that do not affect ownership.
+TEST_CASE("multi-node unit: virtual memory supports policies and advisory calls", "[multi_node][unit][virtual_memory][policy]") {
+    const auto nodes = numa_test::two_test_nodes();
+    const std::size_t size = VirtualMemory::page_size() * 2;
+
+    REQUIRE(VirtualMemory::bind_to_node(nullptr, size, nodes[0], VirtualMemory::NumaPolicy::FirstTouch));
+
+    void* ptr = VirtualMemory::reserve(size);
+    REQUIRE(ptr != nullptr);
+
+    REQUIRE(VirtualMemory::bind_to_node(ptr, size, nodes[0], VirtualMemory::NumaPolicy::FirstTouch));
+    (void)VirtualMemory::bind_to_node(ptr, size, nodes[0], VirtualMemory::NumaPolicy::Interleave);
+
+    VirtualMemory::advise_hugepage(nullptr, size);
+    VirtualMemory::advise_no_hugepage(nullptr, size);
+    VirtualMemory::advise_release(nullptr, size);
+
+    VirtualMemory::advise_hugepage(ptr, 0);
+    VirtualMemory::advise_no_hugepage(ptr, size);
+    VirtualMemory::advise_release(ptr, size);
+
+    VirtualMemory::release(nullptr, size);
+    VirtualMemory::release(ptr, 0);
+    VirtualMemory::release(ptr, size);
+}
+
 // Verifies mandatory failure paths for invalid bindings and allocation targets.
 TEST_CASE("multi-node unit: virtual memory rejects invalid NUMA bindings", "[multi_node][unit][virtual_memory][invalid]") {
     numa_test::require_real_numa_system();
