@@ -1,7 +1,7 @@
 #pragma once
 
-#include "virtual_memory/virtual_memory.hpp"
-#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <mutex>
 
 // ============================================================

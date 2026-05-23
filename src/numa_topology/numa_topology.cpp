@@ -1,6 +1,8 @@
 #include "numa_topology/numa_topology.hpp"
-#include <numa.h>
+
 #include <thread>
+
+#include <numa.h>
 
 NumaTopologyManager& NumaTopologyManager::instance() noexcept {
     static NumaTopologyManager inst;

@@ -1,11 +1,13 @@
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <stdexcept>
+#include <vector>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include "common/test_utils.hpp"
 #include "size_divide/small_object/small_object_allocator.hpp"
-
-#include <algorithm>
-#include <cstddef>
-#include <vector>
 
 namespace {
 

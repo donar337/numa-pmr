@@ -1,14 +1,15 @@
+#include <cstddef>
+#include <limits>
+#include <memory_resource>
+#include <new>
+
 #include <catch2/catch_test_macros.hpp>
+#include <numa.h>
 
 #include "common/test_utils.hpp"
 #include "numa_arena_memory_resource.hpp"
 #include "numa_memory_resource.hpp"
 #include "numa_simple_memory_resource.hpp"
-
-#include <cstddef>
-#include <limits>
-#include <memory_resource>
-#include <new>
 
 namespace {
 

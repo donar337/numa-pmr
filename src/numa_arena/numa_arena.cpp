@@ -1,10 +1,12 @@
 #include "numa_arena/numa_arena.hpp"
 
+#include <atomic>
+#include <cstdint>
+#include <mutex>
+#include <stdexcept>
+
 #include "arena_manager/arena_manager.hpp"
 #include "virtual_memory/virtual_memory.hpp"
-
-#include <new>
-#include <cstdint>
 
 // ============================================================
 // NumaArena

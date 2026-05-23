@@ -1,13 +1,16 @@
 #pragma once
 
-#include "../block.hpp"
-#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <new>
 #include <stdexcept>
 #include <utility>
 #include <vector>
+
+#include "../block.hpp"
+#include "virtual_memory/virtual_memory.hpp"
 
 /**
  * Slab is a contiguous memory region allocated from the OS.

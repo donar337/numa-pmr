@@ -1,10 +1,9 @@
 #pragma once
 
-#include "numa_arena/numa_arena.hpp"
-#include "numa_topology/numa_topology.hpp"
-
 #include <stdexcept>
 #include <vector>
+
+#include "numa_arena/numa_arena.hpp"
 
 class ArenaManager {
 public:

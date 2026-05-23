@@ -1,9 +1,9 @@
 #include "arena_manager/arena_manager.hpp"
 
+#include <new>
+
 #include "numa_topology/numa_topology.hpp"
 #include "virtual_memory/virtual_memory.hpp"
-
-#include <new>
 
 ArenaManager::ArenaManager() {
     init_arenas();

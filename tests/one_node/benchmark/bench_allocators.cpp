@@ -1,9 +1,3 @@
-#include "numa_arena_memory_resource.hpp"
-#include "numa_memory_resource.hpp"
-#include "numa_simple_memory_resource.hpp"
-
-#include <benchmark/benchmark.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +6,12 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <benchmark/benchmark.h>
+
+#include "numa_arena_memory_resource.hpp"
+#include "numa_memory_resource.hpp"
+#include "numa_simple_memory_resource.hpp"
 
 namespace {
 

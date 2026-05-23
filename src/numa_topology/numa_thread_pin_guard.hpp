@@ -1,6 +1,6 @@
 #pragma once
 
-#include "numa_topology/numa_topology.hpp"
+#include <sched.h>
 
 class numa_thread_pin_guard {
 public:

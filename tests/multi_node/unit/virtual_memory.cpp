@@ -1,9 +1,10 @@
+#include <new>
+
 #include <catch2/catch_test_macros.hpp>
+#include <numa.h>
 
 #include "common/test_utils.hpp"
 #include "virtual_memory/virtual_memory.hpp"
-
-#include <new>
 
 // Verifies basic mapping behavior and page-aligned writable reservations.
 TEST_CASE("multi-node unit: virtual memory reserves writable pages", "[multi_node][unit][virtual_memory]") {

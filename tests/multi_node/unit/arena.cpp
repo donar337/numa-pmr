@@ -1,13 +1,14 @@
-#include <catch2/catch_test_macros.hpp>
-
-#include "common/test_utils.hpp"
-#include "numa_arena/numa_arena.hpp"
-#include "arena_manager/arena_manager.hpp"
-
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <thread>
 #include <vector>
+
+#include <catch2/catch_test_macros.hpp>
+
+#include "arena_manager/arena_manager.hpp"
+#include "common/test_utils.hpp"
+#include "numa_arena/numa_arena.hpp"
 
 // Verifies that arenas on multiple nodes route small, zero, large, and over-aligned requests correctly.
 TEST_CASE("multi-node unit: arena selects allocation paths per NUMA node", "[multi_node][unit][arena]") {

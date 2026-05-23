@@ -1,11 +1,10 @@
+#include <array>
+#include <cstring>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include "common/test_utils.hpp"
 #include "size_divide/block.hpp"
-
-#include <array>
-#include <cstdint>
-#include <cstring>
 
 // Verifies that BlockHeader can round-trip between header and user pointers.
 TEST_CASE("multi-node unit: block header converts between header and user pointer", "[multi_node][unit][block]") {

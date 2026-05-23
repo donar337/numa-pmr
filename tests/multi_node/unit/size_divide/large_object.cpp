@@ -1,9 +1,11 @@
+#include <cstddef>
+#include <cstdint>
+#include <new>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include "common/test_utils.hpp"
 #include "size_divide/large_object/large_object_allocator.hpp"
-
-#include <cstddef>
 
 namespace {
 

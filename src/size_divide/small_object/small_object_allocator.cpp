@@ -1,5 +1,9 @@
 #include "small_object_allocator.hpp"
 
+#include <algorithm>
+#include <cstdint>
+#include <stdexcept>
+
 // ============================================================
 // SLAB
 // ============================================================

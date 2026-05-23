@@ -1,10 +1,3 @@
-#include <catch2/catch_test_macros.hpp>
-
-#include "common/test_utils.hpp"
-#include "numa_arena_memory_resource.hpp"
-#include "numa_memory_resource.hpp"
-#include "numa_topology/numa_thread_pin_guard.hpp"
-
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
@@ -12,7 +5,15 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
+
+#include <catch2/catch_test_macros.hpp>
+
+#include "common/test_utils.hpp"
+#include "numa_arena_memory_resource.hpp"
+#include "numa_memory_resource.hpp"
+#include "numa_topology/numa_thread_pin_guard.hpp"
 
 namespace {
 

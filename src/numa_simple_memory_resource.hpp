@@ -1,13 +1,13 @@
 #pragma once
 
-#include "numa_topology/numa_topology.hpp"
-#include "virtual_memory/virtual_memory.hpp"
-
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory_resource>
 #include <new>
+
+#include "numa_topology/numa_topology.hpp"
+#include "virtual_memory/virtual_memory.hpp"
 
 /**
  * A simple NUMA-aware PMR upstream resource.

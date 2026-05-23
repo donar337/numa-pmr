@@ -1,5 +1,7 @@
 #include "numa_topology/numa_thread_pin_guard.hpp"
 
+#include "numa_topology/numa_topology.hpp"
+
 numa_thread_pin_guard::numa_thread_pin_guard(int node_id) noexcept
     : node_id_(node_id),
       previous_affinity_(NumaTopologyManager::instance().pin_current_thread_to_node(node_id)),

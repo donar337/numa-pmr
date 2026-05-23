@@ -55,3 +55,8 @@ build*/
 *.log
 *.json
 !bench.json
+
+# IDE files
+.idea/
+.vscode/
+.cursor/

@@ -1,9 +1,14 @@
 #pragma once
 
-#include "../block.hpp"
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <mutex>
+#include <new>
+
+#include "../block.hpp"
+#include "virtual_memory/virtual_memory.hpp"
 
 // ============================================================
 // LARGE OBJECT ALLOCATOR

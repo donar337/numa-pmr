@@ -1,15 +1,16 @@
+#include <stdexcept>
+#include <utility>
+#include <vector>
+
 #include <catch2/catch_test_macros.hpp>
 
 #define private public
 #include "arena_manager/arena_manager.hpp"
+#include "numa_topology/numa_topology.hpp"
 #include "numa_topology/numa_thread_pin_guard.hpp"
 #undef private
 
 #include "common/test_utils.hpp"
-
-#include <stdexcept>
-#include <utility>
-#include <vector>
 
 // Verifies that ArenaManager discovers a real multi-node topology and exposes arenas.
 TEST_CASE("multi-node unit: arena manager exposes multiple node arenas", "[multi_node][unit][arena_manager]") {

@@ -2,8 +2,8 @@
 
 #include <cstddef>
 #include <memory_resource>
-#include "thread_local/thread_local_cache.hpp"
 
+#include "thread_local/thread_local_cache.hpp"
 
 /**
  * Main NUMA-aware PMR resource using ArenaManager and optional ThreadLocalCache.

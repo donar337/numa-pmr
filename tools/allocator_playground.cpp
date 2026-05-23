@@ -4,15 +4,15 @@
 // cmake --build ./build --target numa_allocator_playground
 // ./build/numa_allocator_playground
 
-#include "numa_arena/numa_arena.hpp"
-#include "numa_memory_resource.hpp"
-#include "numa_topology/numa_topology.hpp"
-
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
-#include <memory_resource>
 #include <vector>
+
+#include "numa_arena/numa_arena.hpp"
+#include "numa_memory_resource.hpp"
+#include "numa_topology/numa_topology.hpp"
 
 int main() {
     auto& topology = NumaTopologyManager::instance();

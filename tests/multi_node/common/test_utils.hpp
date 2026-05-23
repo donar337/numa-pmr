@@ -1,15 +1,5 @@
 #pragma once
 
-#include "virtual_memory/virtual_memory.hpp"
-
-#include <catch2/catch_test_macros.hpp>
-
-#include <numa.h>
-#include <numaif.h>
-#include <sched.h>
-#include <unistd.h>
-
-#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstddef>
@@ -17,9 +7,17 @@
 #include <cstring>
 #include <memory_resource>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
+
+#include <sched.h>
+#include <unistd.h>
+
+#include <catch2/catch_test_macros.hpp>
+#include <numa.h>
+#include <numaif.h>
+
+#include "virtual_memory/virtual_memory.hpp"
 
 namespace numa_test {
 

@@ -1,11 +1,11 @@
+#include <atomic>
+#include <cstddef>
+#include <thread>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include "common/test_utils.hpp"
 #include "thread_local/thread_local_cache.hpp"
-
-#include <atomic>
-#include <cstddef>
-#include <thread>
 
 // Verifies that a pinned thread initializes its cache for the CPU's NUMA node.
 TEST_CASE("multi-node unit: thread cache initializes on pinned NUMA nodes", "[multi_node][unit][thread_cache]") {

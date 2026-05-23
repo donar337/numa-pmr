@@ -1,7 +1,8 @@
 #pragma once
 
-#include <sched.h>
 #include <vector>
+
+#include <sched.h>
 
 class NumaTopologyManager {
 public:

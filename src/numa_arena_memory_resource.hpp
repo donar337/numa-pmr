@@ -1,12 +1,12 @@
 #pragma once
 
-#include "numa_arena/numa_arena.hpp"
-#include "numa_topology/numa_topology.hpp"
-#include "virtual_memory/virtual_memory.hpp"
-
 #include <cstddef>
 #include <memory_resource>
 #include <new>
+
+#include "numa_arena/numa_arena.hpp"
+#include "numa_topology/numa_topology.hpp"
+#include "virtual_memory/virtual_memory.hpp"
 
 /**
  * PMR resource that owns a standalone NUMA-bound arena.

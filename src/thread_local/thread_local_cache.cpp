@@ -1,9 +1,10 @@
 #include "thread_local/thread_local_cache.hpp"
 
-#include "arena_manager/arena_manager.hpp"
-#include "virtual_memory/virtual_memory.hpp"
-
 #include <new>
+
+#include "arena_manager/arena_manager.hpp"
+#include "numa_topology/numa_topology.hpp"
+#include "virtual_memory/virtual_memory.hpp"
 
 namespace {
 

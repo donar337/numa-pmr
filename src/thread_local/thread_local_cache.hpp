@@ -1,10 +1,10 @@
 #pragma once
 
-#include "numa_arena/numa_arena.hpp"
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
+
+#include "numa_arena/numa_arena.hpp"
 
 class ThreadNumaContextOwner;
 

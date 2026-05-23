@@ -1,13 +1,13 @@
 #pragma once
 
-#include "size_divide/small_object/small_object_allocator.hpp"
-#include "size_divide/large_object/large_object_allocator.hpp"
-
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <memory>
 #include <mutex>
-#include <cstddef>
+
+#include "size_divide/large_object/large_object_allocator.hpp"
+#include "size_divide/small_object/small_object_allocator.hpp"
 
 /**
  * Per-NUMA-node allocation faсade, holds SmallObjectAllocator and LargeObjectAllocator for a NUMA node.

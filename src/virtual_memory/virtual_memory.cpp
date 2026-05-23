@@ -3,6 +3,7 @@
 #include <new>
 
 #include <sys/mman.h>
+
 #include <numa.h>
 #include <numaif.h>
 
