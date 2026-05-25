@@ -100,6 +100,17 @@ add_numa_multi_node_test(
     multi_node_integration
 )
 
+if(NUMA_ALLOCATOR_BUILD_BENCHMARKS)
+    add_executable(multi_node_bench_multialloc
+        benchmark/multialloc_benchmark.cpp
+    )
+
+    target_link_libraries(multi_node_bench_multialloc
+        PRIVATE
+            numa_allocator
+    )
+endif()
+
 if(NUMA_ALLOCATOR_ENABLE_COVERAGE)
     find_program(GCOVR_EXECUTABLE gcovr)
 
