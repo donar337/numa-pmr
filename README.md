@@ -156,6 +156,26 @@ auto dynamic_node = numa_simple_memory_resource::current_node_per_allocation();
 
 `numa_simple_memory_resource` полезен именно как upstream allocator: он не пытается самостоятельно решать задачу высокопроизводительного reuse, а предоставляет понятную политику получения памяти у ОС с NUMA binding. Поверх него можно строить другие allocator layers, использовать его как baseline в benchmark-ах или выбирать его для редких крупных выделений, где стоимость системного вызова приемлема.
 
+## Установка и сборка
+
+Для сборки нужны C++20-компилятор, CMake 3.20+, Ninja, Git и development-файлы `libnuma`. На Ubuntu/Debian их можно установить так:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential cmake ninja-build git libnuma-dev numactl
+```
+
+После этого проект собирается стандартным вызовом CMake через Ninja:
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DNUMA_ALLOCATOR_BUILD_TESTS=ON \
+  -DNUMA_ALLOCATOR_BUILD_BENCHMARKS=OFF
+
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
 ## Как использовать
 
 Основной способ использования - передать ресурс в PMR-контейнер.
